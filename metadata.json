@@ -1,0 +1,8 @@
+
+{
+  "name": "Operational Logistics Reporter",
+  "description": "A high-performance logistics reporting application for tracking fleet offer and capacity with local database storage and export capabilities.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
