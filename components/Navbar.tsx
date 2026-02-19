@@ -35,7 +35,7 @@ const Navbar: React.FC<NavbarProps> = ({ view, step, onBack, onAdminClick, title
                 </div>
 
                 {/* Center: Title (Dynamic) */}
-                <div className="absolute left-1/2 -translate-x-1/2 font-semibold text-sm opacity-90 truncate max-w-[120px]">
+                <div className="absolute left-1/2 -translate-x-1/2 font-semibold text-sm opacity-90">
                     {title}
                 </div>
 
