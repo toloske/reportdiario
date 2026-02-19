@@ -1,7 +1,7 @@
 
 import React from 'react';
-import { FormData, VehicleStatus } from '../../types';
-import { JUSTIFICATION_OPTIONS } from '../../constants';
+import { FormData, VehicleStatus } from '../types';
+import { JUSTIFICATION_OPTIONS } from '../constants';
 
 interface Step2Props {
   data: FormData;

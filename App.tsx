@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { Step, View, FormData } from '../types';
-import { INITIAL_CATEGORIES } from '../constants';
+import { Step, View, FormData } from './types';
+import { INITIAL_CATEGORIES } from './constants';
 import Step1 from './components/Step1';
 import Step2 from './components/Step2';
 import AnalysisSummary from './components/AnalysisSummary';

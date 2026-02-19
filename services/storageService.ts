@@ -1,6 +1,6 @@
 
 import { supabase } from "./supabaseClient";
-import { FormData, SavedReport } from "../../types";
+import { FormData, SavedReport } from "../types";
 
 const BUCKET_NAME = 'comprovantes';
 

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Step, View } from '../../types';
+import { Step, View } from '../types';
 
 interface NavbarProps {
     view: View;

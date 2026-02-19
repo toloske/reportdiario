@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { FormData } from '../../types';
+import { FormData } from '../types';
 import { SVC } from '../services/dataService';
 
 interface Step1Props {

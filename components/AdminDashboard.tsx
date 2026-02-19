@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { getReports, exportToCSV } from '../services/storageService';
-import { SavedReport } from '../../types';
+import { SavedReport } from '../types';
 
 interface AdminDashboardProps {
   onBack: () => void;
