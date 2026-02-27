@@ -83,7 +83,7 @@ const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSav
                     ))}
                   </select>
 
-                  {vehicle.justification === 'Outros' && (
+                  {vehicle.justification === 'Carro reserva' && (
                     <div className="mt-3">
                       <textarea
                         className="w-full rounded-lg border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-sm focus:ring-primary focus:border-primary p-2 border"

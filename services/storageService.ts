@@ -57,7 +57,7 @@ export const saveReport = async (data: FormData): Promise<SavedReport | null> =>
       return `"${v.plate}" - RODOU`;
     } else {
       let just = `"${v.plate}" - ${v.justification}`;
-      if (v.justification === 'Outros' && v.otherJustification) {
+      if (v.justification === 'Carro reserva' && v.otherJustification) {
         just += ` (${v.otherJustification})`;
       }
       return just;
@@ -94,5 +94,18 @@ export const saveReport = async (data: FormData): Promise<SavedReport | null> =>
   };
 };
 
-export const getReports = () => [];
+export const getReportsByDate = async (dateStr: string) => {
+  const { data, error } = await supabase
+    .from('daily_reports')
+    .select('*')
+    .eq('date', dateStr)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching reports:', error);
+    return [];
+  }
+  return data || [];
+};
+
 export const exportToCSV = () => { };

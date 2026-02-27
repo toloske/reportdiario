@@ -1,5 +1,5 @@
 
-import { VehicleCategory } from '../types';
+import { VehicleCategory } from './types';
 
 export const INITIAL_CATEGORIES: VehicleCategory[] = [
   { id: 'bulk_vuc_pool', name: 'BULK - VUC EQUIPE ÚNICA POOL', offer: null, capacity: null },
@@ -15,7 +15,7 @@ export const JUSTIFICATION_OPTIONS = [
   'Manutenção',
   'Folga',
   'Sem Driver',
-  'Outros'
+  'Carro reserva'
 ];
 
 export const SVC_OPTIONS = [

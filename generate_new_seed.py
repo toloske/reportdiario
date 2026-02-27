@@ -5,7 +5,7 @@ import os
 
 # Files
 svc_file = 'Regionais  - Regionais.csv'
-vehicles_file = 'Carros e SVC - Página1.csv'
+vehicles_file = '../Placas - Página1.csv'
 
 # Read SVCs
 svcs = []
@@ -24,9 +24,16 @@ vehicles = []
 with open(vehicles_file, mode='r', encoding='utf-8') as f:
     reader = csv.DictReader(f)
     for row in reader:
+        svc_val = row['Base'].strip().upper()
+        plate_val = row['Placa'].strip().upper()
+        
+        # Ensure svc_val exists in svcs
+        if not any(s['id'] == svc_val for s in svcs):
+            svcs.append({'id': svc_val, 'name': svc_val, 'manager': '', 'city': ''})
+            
         vehicles.append({
-            'plate': row['Placa'],
-            'svc_id': row['SVC'],
+            'plate': plate_val,
+            'svc_id': svc_val,
             'active': True
         })
 
