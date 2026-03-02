@@ -52,7 +52,7 @@ const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSav
               return acc;
             }, {} as Record<string, VehicleStatus[]>);
 
-            return Object.entries(grouped).map(([modalName, vehiclesList]) => {
+            const groupedElements = Object.entries(grouped).map(([modalName, vehiclesList]) => {
               const vehicles = vehiclesList as VehicleStatus[];
               return (
                 <div key={modalName} className="mb-6 animate-in slide-in-from-bottom-2 duration-300">
@@ -116,7 +116,10 @@ const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSav
                     </div>
                   ))}
                 </div>
-              ));
+              );
+            });
+
+            return <>{groupedElements}</>;
           })()}
         </section>
       ) : (
