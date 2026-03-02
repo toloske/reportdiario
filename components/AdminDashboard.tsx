@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { supabase } from '../services/supabaseClient';
 import { getReportsByDate } from '../services/storageService';
 import { dataService, SVC } from '../services/dataService';
 
@@ -12,11 +13,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [svcs, setSvcs] = useState<SVC[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const [mercadoLivreSvcs, setMercadoLivreSvcs] = useState<string[]>([]);
+
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       const fetchedSvcs = await dataService.fetchSVCs();
       setSvcs(fetchedSvcs);
+
+      // Fetch which SVC IDs are exclusively responsible for "Mercado Livre"
+      const { data: mlVehicles } = await supabase
+        .from('vehicles')
+        .select('svc_id')
+        .eq('operation', 'Mercado Livre');
+
+      const uniqueMlSvcIds = Array.from(new Set(mlVehicles?.map(v => v.svc_id) || []));
+      setMercadoLivreSvcs(uniqueMlSvcIds);
 
       const fetchedReports = await getReportsByDate(selectedDate);
       setReports(fetchedReports);
@@ -26,7 +38,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   }, [selectedDate]);
 
   const reportedSvcIds = reports.map(r => r.svc_id);
-  const missingSvcs = svcs.filter(svc => !reportedSvcIds.includes(svc.id));
+  const missingSvcs = svcs.filter(svc =>
+    !reportedSvcIds.includes(svc.id) && mercadoLivreSvcs.includes(svc.id)
+  );
 
   const handleExportCSV = () => {
     if (reports.length === 0) return;

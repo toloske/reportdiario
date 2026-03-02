@@ -43,61 +43,81 @@ const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSav
             <h2 className="text-xl font-bold text-primary dark:text-slate-100">Status da Frota (Placa a Placa)</h2>
           </div>
 
-          {data.vehicleStatuses.map((vehicle) => (
-            <div key={vehicle.plate} className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-4 mb-4">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Veículo</p>
-                  <p className="text-lg font-bold text-primary dark:text-white">{vehicle.plate}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Rodou hoje?</p>
-                  <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-fit ml-auto">
-                    <button
-                      onClick={() => updateVehicle(vehicle.plate, { ranToday: true, justification: undefined, otherJustification: undefined })}
-                      className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${vehicle.ranToday ? 'bg-primary text-white shadow-sm' : 'text-slate-600 dark:text-slate-400'}`}
-                    >
-                      Sim
-                    </button>
-                    <button
-                      onClick={() => updateVehicle(vehicle.plate, { ranToday: false })}
-                      className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${!vehicle.ranToday ? 'bg-red-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400'}`}
-                    >
-                      Não
-                    </button>
+          {/* Group vehicles by modal */}
+          {(() => {
+            const grouped = data.vehicleStatuses.reduce((acc, vehicle) => {
+              const modal = vehicle.modal || 'Sem Modal Declarado';
+              if (!acc[modal]) acc[modal] = [];
+              acc[modal].push(vehicle);
+              return acc;
+            }, {} as Record<string, VehicleStatus[]>);
+
+            return Object.entries(grouped).map(([modalName, vehiclesList]) => {
+              const vehicles = vehiclesList as VehicleStatus[];
+              return (
+                <div key={modalName} className="mb-6 animate-in slide-in-from-bottom-2 duration-300">
+                  <div className="bg-slate-50 dark:bg-slate-800/50 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 mb-3 ml-2 w-fit">
+                    <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 tracking-wide">{modalName}</h3>
                   </div>
-                </div>
-              </div>
 
-              {!vehicle.ranToday && (
-                <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 animate-in slide-in-from-top-2 duration-200">
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Justificativa</label>
-                  <select
-                    className="w-full rounded-lg border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-sm focus:ring-primary focus:border-primary p-2 border"
-                    value={vehicle.justification || ''}
-                    onChange={(e) => updateVehicle(vehicle.plate, { justification: e.target.value })}
-                  >
-                    <option value="">Selecione o motivo...</option>
-                    {JUSTIFICATION_OPTIONS.map(opt => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
+                  {vehicles.map((vehicle) => (
+                    <div key={vehicle.plate} className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-4 mb-4">
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Veículo</p>
+                          <p className="text-lg font-bold text-primary dark:text-white">{vehicle.plate}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Rodou hoje?</p>
+                          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-fit ml-auto">
+                            <button
+                              onClick={() => updateVehicle(vehicle.plate, { ranToday: true, justification: undefined, otherJustification: undefined })}
+                              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${vehicle.ranToday ? 'bg-primary text-white shadow-sm' : 'text-slate-600 dark:text-slate-400'}`}
+                            >
+                              Sim
+                            </button>
+                            <button
+                              onClick={() => updateVehicle(vehicle.plate, { ranToday: false })}
+                              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${!vehicle.ranToday ? 'bg-red-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400'}`}
+                            >
+                              Não
+                            </button>
+                          </div>
+                        </div>
+                      </div>
 
-                  {vehicle.justification === 'Carro reserva' && (
-                    <div className="mt-3">
-                      <textarea
-                        className="w-full rounded-lg border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-sm focus:ring-primary focus:border-primary p-2 border"
-                        placeholder="Descreva o motivo detalhadamente..."
-                        rows={2}
-                        value={vehicle.otherJustification || ''}
-                        onChange={(e) => updateVehicle(vehicle.plate, { otherJustification: e.target.value })}
-                      />
+                      {!vehicle.ranToday && (
+                        <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 animate-in slide-in-from-top-2 duration-200">
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Justificativa</label>
+                          <select
+                            className="w-full rounded-lg border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-sm focus:ring-primary focus:border-primary p-2 border"
+                            value={vehicle.justification || ''}
+                            onChange={(e) => updateVehicle(vehicle.plate, { justification: e.target.value })}
+                          >
+                            <option value="">Selecione o motivo...</option>
+                            {JUSTIFICATION_OPTIONS.map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+
+                          {vehicle.justification === 'Carro reserva' && (
+                            <div className="mt-3">
+                              <textarea
+                                className="w-full rounded-lg border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-sm focus:ring-primary focus:border-primary p-2 border"
+                                placeholder="Descreva o motivo detalhadamente..."
+                                rows={2}
+                                value={vehicle.otherJustification || ''}
+                                onChange={(e) => updateVehicle(vehicle.plate, { otherJustification: e.target.value })}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ))}
                 </div>
-              )}
-            </div>
-          ))}
+              ));
+          })()}
         </section>
       ) : (
         <section className="px-4 pt-6">

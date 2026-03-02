@@ -14,6 +14,8 @@ export interface Vehicle {
     ranToday: boolean;
     justification?: string;
     otherJustification?: string;
+    operation?: string;
+    modal?: string;
 }
 
 export const dataService = {
@@ -46,7 +48,9 @@ export const dataService = {
         return (data || []).map(v => ({
             plate: v.plate,
             svc_id: v.svc_id,
-            ranToday: true // Default state for UI
+            ranToday: true, // Default state for UI
+            operation: v.operation,
+            modal: v.modal
         }));
     }
 };

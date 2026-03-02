@@ -21,20 +21,24 @@ with open(svc_file, mode='r', encoding='utf-8') as f:
 
 # Read Vehicles
 vehicles = []
-with open(vehicles_file, mode='r', encoding='utf-8') as f:
+with open(vehicles_file, mode='r', encoding='utf-8-sig') as f:
     reader = csv.DictReader(f)
     for row in reader:
         svc_val = row['Base'].strip().upper()
         plate_val = row['Placa'].strip().upper()
+        operation_val = row.get('Operação', 'Mercado Livre').strip()
+        modal_val = row.get('Modal Mercado livre', '').strip()
         
-        # Ensure svc_val exists in svcs
-        if not any(s['id'] == svc_val for s in svcs):
+        # Ensure svc_val exists in svcs (case-insensitive check)
+        if not any(str(s['id']).strip().upper() == svc_val for s in svcs):
             svcs.append({'id': svc_val, 'name': svc_val, 'manager': '', 'city': ''})
             
         vehicles.append({
             'plate': plate_val,
             'svc_id': svc_val,
-            'active': True
+            'active': True,
+            'operation': operation_val,
+            'modal': modal_val
         })
 
 # Generate SQL
@@ -62,9 +66,11 @@ if vehicles:
     for v in vehicles:
         safe_plate = str(v['plate']).strip().upper().replace("'", "''")
         safe_svc = str(v['svc_id']).strip().upper().replace("'", "''")
-        values.append(f"('{safe_plate}', '{safe_svc}', true)")
+        safe_op = str(v['operation']).replace("'", "''")
+        safe_modal = str(v['modal']).replace("'", "''")
+        values.append(f"('{safe_plate}', '{safe_svc}', true, '{safe_op}', '{safe_modal}')")
     
-    sql_statements.append(f"INSERT INTO public.vehicles (plate, svc_id, active) VALUES {','.join(values)};")
+    sql_statements.append(f"INSERT INTO public.vehicles (plate, svc_id, active, operation, modal) VALUES {','.join(values)};")
 
 # Output to file
 with open('seed_new_data.sql', 'w', encoding='utf-8') as f:

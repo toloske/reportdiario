@@ -22,6 +22,8 @@ export interface VehicleStatus {
   ranToday: boolean;
   justification?: string;
   otherJustification?: string;
+  modal?: string;
+  operation?: string;
 }
 
 export interface FormData {
