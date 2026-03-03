@@ -12,6 +12,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [reports, setReports] = useState<any[]>([]);
   const [svcs, setSvcs] = useState<SVC[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState(false);
 
   const [mercadoLivreSvcs, setMercadoLivreSvcs] = useState<string[]>([]);
 
@@ -84,6 +87,68 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     link.click();
     document.body.removeChild(link);
   };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordInput === '@Torpedo22') {
+      setIsAuthenticated(true);
+      setPasswordError(false);
+    } else {
+      setPasswordError(true);
+      setPasswordInput('');
+    }
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-4 font-sans animate-in fade-in zoom-in-95 duration-300">
+        <div className="bg-white dark:bg-slate-900 w-full max-w-sm p-8 rounded-3xl shadow-xl border border-slate-200/60 dark:border-slate-800 text-center relative overflow-hidden">
+          {/* Decorative background circle */}
+          <div className="absolute -top-20 -right-20 w-40 h-40 bg-primary/5 rounded-full blur-3xl"></div>
+
+          <div className="w-16 h-16 bg-gradient-to-tr from-primary/20 to-blue-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 transform rotate-3">
+            <span className="material-symbols-outlined text-3xl font-light text-primary -rotate-3">lock</span>
+          </div>
+
+          <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-2 tracking-tight">Acesso Restrito</h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm mb-8">Digite a senha para acessar o painel administrativo.</p>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <input
+                type="password"
+                placeholder="Senha Master"
+                value={passwordInput}
+                onChange={(e) => {
+                  setPasswordInput(e.target.value);
+                  setPasswordError(false);
+                }}
+                className={`w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-950 border ${passwordError ? 'border-red-400 focus:ring-red-400/20' : 'border-slate-200 dark:border-slate-800 focus:border-primary focus:ring-primary/20'} rounded-xl text-center text-lg tracking-widest text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-4 transition-all placeholder:tracking-normal placeholder:text-sm`}
+                autoFocus
+              />
+              {passwordError && (
+                <p className="text-red-500 text-xs font-semibold mt-2 animate-in slide-in-from-top-1">Senha incorreta. Tente novamente.</p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-slate-900 hover:bg-black dark:bg-primary dark:hover:bg-primary/90 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-slate-900/20 dark:shadow-primary/20 active:scale-[0.98] transition-all"
+            >
+              Acessar Painel
+            </button>
+          </form>
+
+          <button
+            onClick={onBack}
+            className="mt-6 text-sm font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+          >
+            Voltar para o início
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-24 font-sans">

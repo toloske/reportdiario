@@ -58,7 +58,9 @@ const App: React.FC = () => {
             plate: v.plate,
             ranToday: true, // Default to true
             justification: '',
-            otherJustification: ''
+            otherJustification: '',
+            modal: v.modal,
+            operation: v.operation
           }))
         }));
       } catch (error) {
