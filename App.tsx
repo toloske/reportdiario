@@ -19,7 +19,7 @@ const App: React.FC = () => {
   const [loadingSvcs, setLoadingSvcs] = useState(true);
 
   const [formData, setFormData] = useState<FormData>({
-    date: new Date().toISOString().split('T')[0],
+    date: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0],
     svc: '',
     categories: INITIAL_CATEGORIES,
     vehicleStatuses: [],
@@ -90,7 +90,7 @@ const App: React.FC = () => {
 
   const handleReset = () => {
     setFormData({
-      date: new Date().toISOString().split('T')[0],
+      date: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0],
       svc: '',
       categories: INITIAL_CATEGORIES,
       vehicleStatuses: [],
