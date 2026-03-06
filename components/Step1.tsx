@@ -28,6 +28,12 @@ const Step1: React.FC<Step1Props> = ({ data, updateData, onNext, svcOptions }) =
           <h2 className="text-lg font-bold text-primary dark:text-slate-100">Dados da Operação</h2>
         </div>
         <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 space-y-4">
+          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/50 dark:border-amber-900/50 p-3 rounded-lg flex items-start gap-2.5">
+            <span className="material-symbols-outlined text-amber-500 text-[18px] mt-0.5 shrink-0">info</span>
+            <p className="text-[13px] font-medium text-amber-800 dark:text-amber-300/90 leading-relaxed">
+              <strong>Importante:</strong> A data do reporte deve ser exatamente o <strong>dia em que a operação aconteceu</strong>.
+            </p>
+          </div>
           <label className="block">
             <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">Data</span>
             <div className="relative">
