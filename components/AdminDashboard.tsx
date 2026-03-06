@@ -42,7 +42,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
   const reportedSvcIds = reports.map(r => r.svc_id);
   const missingSvcs = svcs.filter(svc =>
-    !reportedSvcIds.includes(svc.id) && mercadoLivreSvcs.includes(svc.id)
+    !reportedSvcIds.includes(svc.id) &&
+    mercadoLivreSvcs.includes(svc.id) &&
+    svc.name !== 'FIRST MILE'
   );
 
   const handleExportCSV = () => {
