@@ -16,6 +16,7 @@ export interface Vehicle {
     otherJustification?: string;
     operation?: string;
     modal?: string;
+    fleet_type?: string;
 }
 
 export const dataService = {
@@ -50,7 +51,23 @@ export const dataService = {
             svc_id: v.svc_id,
             ranToday: true, // Default state for UI
             operation: v.operation,
-            modal: v.modal
+            modal: v.modal,
+            fleet_type: v.fleet_type
         }));
+    },
+    
+    fetchFixedFleetVehicles: async (): Promise<Vehicle[]> => {
+        const { data, error } = await supabase
+            .from('vehicles')
+            .select('*')
+            .eq('fleet_type', 'FROTA FIXA')
+            .eq('active', true);
+
+        if (error) {
+            console.error("Error fetching fixed fleet vehicles:", error);
+            return [];
+        }
+
+        return data || [];
     }
 };

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { getReportsByDate, getReportsByDateRange, saveDailyRoutes, getDailyRoutesByDate } from '../services/storageService';
-import { dataService, SVC } from '../services/dataService';
+import { dataService, SVC, Vehicle } from '../services/dataService';
 import { INITIAL_CATEGORIES } from '../constants';
 import Papa from 'papaparse';
 
@@ -20,6 +20,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [selectedDate, setSelectedDate] = useState<string>(getLocalDateString());
   const [reports, setReports] = useState<any[]>([]);
   const [svcs, setSvcs] = useState<SVC[]>([]);
+  const [fixedVehicles, setFixedVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(false);
   
   const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'>('daily');
@@ -28,6 +29,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   );
   const [endDate, setEndDate] = useState<string>(getLocalDateString());
   const [utilizationData, setUtilizationData] = useState<any[]>([]);
+  const [justificationStats, setJustificationStats] = useState<{reason: string, count: number}[]>([]);
+  const [dailyIdleStats, setDailyIdleStats] = useState<{date: string, idle: number}[]>([]);
+  const [topSvcStats, setTopSvcStats] = useState<{svc: string, count: number}[]>([]);
+  const [topPlateStats, setTopPlateStats] = useState<{plate: string, count: number, reason: string}[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
@@ -52,6 +57,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       setLoading(true);
       const fetchedSvcs = await dataService.fetchSVCs();
       setSvcs(fetchedSvcs);
+      const fv = await dataService.fetchFixedFleetVehicles();
+      setFixedVehicles(fv);
 
       // Fetch which SVC IDs are exclusively responsible for "Mercado Livre"
       const { data: mlVehicles } = await supabase
@@ -83,6 +90,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           .filter(svc => mercadoLivreSvcs.includes(svc.id) && svc.name !== 'FIRST MILE')
           .map(svc => svc.id);
 
+        const validFixedPlates = fixedVehicles
+          .filter(v => validSvcIds.includes(v.svc_id))
+          .map(v => v.plate);
+          
+        const totalFixedPlates = validFixedPlates.length;
+
         const grouped: Record<string, any[]> = {};
         fetchedReports.forEach(r => {
           if (validSvcIds.includes(r.svc_id)) {
@@ -91,28 +104,56 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           }
         });
 
-        const utilData = Object.keys(grouped).sort((a,b) => b.localeCompare(a)).map(date => {
+        const utilData: any[] = [];
+        const reasonCounts: Record<string, number> = {};
+        const dailyIdleList: {date: string, idle: number}[] = [];
+        const svcOffenderCounts: Record<string, number> = {};
+        const plateOffenderCounts: Record<string, {count: number, reasons: Set<string>}> = {};
+
+        Object.keys(grouped).sort((a,b) => b.localeCompare(a)).forEach(date => {
           const dayReports = grouped[date];
-          let totalPlates = 0;
           let maintenance = 0;
           let ran = 0;
+          let dailyIdle = 0;
 
           dayReports.forEach(rep => {
             if (rep.justifications) {
               const justs = rep.justifications.split('; ');
-              totalPlates += justs.length;
               justs.forEach((j: string) => {
-                if (j.toLowerCase().includes('manutenção')) {
-                  maintenance++;
-                }
-                if (j.includes('RODOU')) {
-                  ran++;
+                const match = j.match(/"?([A-Za-z0-9]+)"?\s*-\s*(.*)/);
+                if (match) {
+                    const plate = match[1];
+                    const reason = match[2];
+                    
+                    if (validFixedPlates.includes(plate)) {
+                        if (reason.toLowerCase().includes('manutenção')) {
+                          maintenance++;
+                        }
+                        if (reason.includes('RODOU')) {
+                          ran++;
+                        }
+                        
+                        if (!reason.includes('RODOU')) {
+                            const simpleReason = reason.split(' - ')[0].trim();
+                            reasonCounts[simpleReason] = (reasonCounts[simpleReason] || 0) + 1;
+                            
+                            dailyIdle++;
+                            svcOffenderCounts[rep.svc_id] = (svcOffenderCounts[rep.svc_id] || 0) + 1;
+                            
+                            // Track plate
+                            if (!plateOffenderCounts[plate]) {
+                                plateOffenderCounts[plate] = { count: 0, reasons: new Set() };
+                            }
+                            plateOffenderCounts[plate].count++;
+                            plateOffenderCounts[plate].reasons.add(simpleReason);
+                        }
+                    }
                 }
               });
             }
           });
 
-          const available = totalPlates - maintenance;
+          const available = totalFixedPlates - maintenance;
           const adjustedRan = ran * 1.162790698;
           let utilizationPerc = 0;
           let utilizationTotalPerc = 0;
@@ -120,28 +161,51 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           if (available > 0) {
             utilizationPerc = (adjustedRan / available) * 100;
           }
-          if (totalPlates > 0) {
-            utilizationTotalPerc = (adjustedRan / totalPlates) * 100;
+          if (totalFixedPlates > 0) {
+            utilizationTotalPerc = (adjustedRan / totalFixedPlates) * 100;
           }
 
-          return {
+          utilData.push({
             date,
-            totalPlates,
+            totalPlates: totalFixedPlates,
             maintenance,
             available,
             ranAmount: ran,
             adjustedRan,
             utilizationPerc,
             utilizationTotalPerc
-          };
+          });
+          
+          dailyIdleList.push({ date, idle: dailyIdle });
         });
 
         setUtilizationData(utilData);
+        setDailyIdleStats(dailyIdleList.reverse()); // Reverse to show earliest first
+        
+        const statsArray = Object.keys(reasonCounts)
+            .map(reason => ({ reason, count: reasonCounts[reason] }))
+            .sort((a,b) => b.count - a.count);
+        setJustificationStats(statsArray);
+        
+        const svcArray = Object.keys(svcOffenderCounts)
+            .map(svc => ({ svc, count: svcOffenderCounts[svc] }))
+            .sort((a,b) => b.count - a.count).slice(0, 10);
+        setTopSvcStats(svcArray);
+        
+        const plateArray = Object.keys(plateOffenderCounts)
+            .map(plate => ({ 
+                plate, 
+                count: plateOffenderCounts[plate].count,
+                reason: Array.from(plateOffenderCounts[plate].reasons).join(', ')
+            }))
+            .sort((a,b) => b.count - a.count).slice(0, 15);
+        setTopPlateStats(plateArray);
+        
         setLoading(false);
       }
     };
     loadUtilization();
-  }, [startDate, endDate, activeTab, svcs, mercadoLivreSvcs]);
+  }, [startDate, endDate, activeTab, svcs, mercadoLivreSvcs, fixedVehicles]);
 
   const reportedSvcIds = reports.map(r => r.svc_id);
   const missingSvcs = svcs.filter(svc =>
@@ -694,6 +758,131 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               </table>
             </div>
           </div>
+
+          {/* Additional Analytics Section */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+            
+            {/* Top Reasons */}
+            {justificationStats.length > 0 && (
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] p-5 col-span-1 md:col-span-2 lg:col-span-1">
+                <h3 className="font-bold text-slate-700 dark:text-slate-200 mb-6 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-amber-500">pie_chart</span>
+                  Top Motivos de Parada
+                </h3>
+                <div className="space-y-4 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+                  {justificationStats.map((stat, idx) => {
+                     const maxCount = justificationStats[0].count;
+                     const perc = (stat.count / maxCount) * 100;
+                     return (
+                       <div key={idx} className="flex items-center gap-4">
+                         <span className="w-1/3 text-xs font-semibold text-slate-600 dark:text-slate-400 truncate" title={stat.reason}>{stat.reason}</span>
+                         <div className="flex-1 h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex items-center">
+                           <div className="h-full bg-amber-500 dark:bg-amber-600 rounded-full transition-all duration-1000" style={{ width: `${perc}%` }}></div>
+                         </div>
+                         <span className="text-xs font-bold text-slate-700 dark:text-slate-200 w-8 text-right">{stat.count}</span>
+                       </div>
+                     )
+                  })}
+                </div>
+              </div>
+            )}
+            
+            {/* Top SVCs */}
+            {topSvcStats.length > 0 && (
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] p-5">
+                <h3 className="font-bold text-slate-700 dark:text-slate-200 mb-6 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-red-500">storefront</span>
+                  Top SVCs Ofensores
+                </h3>
+                <div className="space-y-4 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+                  {topSvcStats.map((stat, idx) => {
+                     const maxCount = topSvcStats[0].count;
+                     const perc = (stat.count / maxCount) * 100;
+                     return (
+                       <div key={idx} className="flex items-center gap-4">
+                         <span className="w-1/3 text-xs font-semibold text-slate-600 dark:text-slate-400 truncate" title={stat.svc}>{stat.svc}</span>
+                         <div className="flex-1 h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex items-center">
+                           <div className="h-full bg-red-400 dark:bg-red-500 rounded-full transition-all duration-1000" style={{ width: `${perc}%` }}></div>
+                         </div>
+                         <span className="text-xs font-bold text-red-600 dark:text-red-400 w-8 text-right">{stat.count}</span>
+                       </div>
+                     )
+                  })}
+                </div>
+              </div>
+            )}
+            
+            {/* Top Plates */}
+            {topPlateStats.length > 0 && (
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] p-5">
+                <h3 className="font-bold text-slate-700 dark:text-slate-200 mb-6 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-purple-500">directions_car</span>
+                  Top Placas Paradas
+                </h3>
+                <div className="space-y-3.5 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+                  {topPlateStats.map((stat, idx) => {
+                     const maxCount = topPlateStats[0].count;
+                     const perc = (stat.count / maxCount) * 100;
+                     return (
+                       <div key={idx} className="flex flex-col gap-1.5 border-b border-slate-100 dark:border-slate-800/60 pb-3 last:border-0 last:pb-0">
+                         <div className="flex justify-between items-center">
+                           <span className="text-sm font-bold font-mono text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-center min-w-[80px]">{stat.plate}</span>
+                           <span className="text-xs font-bold px-2 py-1 rounded bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 flex items-center justify-center gap-1 shadow-sm">
+                              {stat.count} <span className="opacity-70 text-[10px]">dias</span>
+                           </span>
+                         </div>
+                         <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                              <div className="h-full bg-purple-400 dark:bg-purple-500 rounded-full" style={{ width: `${perc}%` }}></div>
+                            </div>
+                         </div>
+                         <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate opacity-80" title={stat.reason}>
+                            Motivo(s): {stat.reason}
+                         </p>
+                       </div>
+                     )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {/* Daily Evolution Chart */}
+          {dailyIdleStats.length > 0 && (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] p-5 mt-6">
+              <h3 className="font-bold text-slate-700 dark:text-slate-200 mb-6 flex items-center gap-2">
+                <span className="material-symbols-outlined text-indigo-500">timeline</span>
+                Evolução Diária de Paradas (Frota Fixa)
+              </h3>
+              
+              <div className="h-48 md:h-64 flex items-end gap-2 md:gap-4 overflow-x-auto pb-4 custom-scrollbar">
+                {dailyIdleStats.map((stat, idx) => {
+                   const maxVal = Math.max(...dailyIdleStats.map(s => s.idle)) || 1;
+                   const percHeight = (stat.idle / maxVal) * 100;
+                   const dateObj = new Date(stat.date);
+                   dateObj.setDate(dateObj.getDate() + 1); // Adjust for timezone if needed
+                   const dayStr = dateObj.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
+                   
+                   return (
+                     <div key={idx} className="flex flex-col items-center justify-end h-full gap-2 min-w-[32px] md:min-w-[48px] group">
+                       <span className="text-xs font-black text-indigo-700 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity translate-y-2 group-hover:translate-y-0">
+                          {stat.idle}
+                       </span>
+                       <div 
+                         className="w-full bg-gradient-to-t from-indigo-500 to-blue-400 dark:from-indigo-600 dark:to-blue-500 rounded-t-sm shadow-md transition-all duration-500 group-hover:brightness-110 group-hover:shadow-indigo-500/30"
+                         style={{ height: `${Math.max(percHeight, 2)}%` }} // At least 2% to show the bar
+                         title={`${stat.idle} paradas em ${dayStr}`}
+                       ></div>
+                       <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap rotate-[-45deg] origin-top-left translate-y-2 translate-x-1">
+                         {dayStr}
+                       </span>
+                     </div>
+                   );
+                })}
+              </div>
+            </div>
+          )}
+          
         </div>
       ) : activeTab === 'audit' && auditResults && auditResults.dbRouteCount > 0 ? (
         <div className="space-y-6">
