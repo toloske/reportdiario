@@ -108,4 +108,45 @@ export const getReportsByDate = async (dateStr: string) => {
   return data || [];
 };
 
+export const getReportsByDateRange = async (startDate: string, endDate: string) => {
+  const { data, error } = await supabase
+    .from('daily_reports')
+    .select('*')
+    .gte('date', startDate)
+    .lte('date', endDate)
+    .order('date', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching reports by range:', error);
+    return [];
+  }
+  return data || [];
+};
+
+export const saveDailyRoutes = async (payload: { route_id: string, date: string, plate: string, driver_id?: string, vehicle_type?: string }[]) => {
+  // We use upsert on route_id constraint to ignore duplicates safely
+  const { error } = await supabase
+    .from('daily_routes')
+    .upsert(payload, { onConflict: 'route_id', ignoreDuplicates: true });
+
+  if (error) {
+    console.error('Error saving daily routes:', error);
+    throw error;
+  }
+};
+
+export const getDailyRoutesByDate = async (dateStr: string) => {
+  const { data, error } = await supabase
+    .from('daily_routes')
+    .select('*')
+    .eq('date', dateStr)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching daily routes:', error);
+    return [];
+  }
+  return data || [];
+};
+
 export const exportToCSV = () => { };
