@@ -19,6 +19,14 @@ const Step1: React.FC<Step1Props> = ({ data, updateData, onNext, svcOptions }) =
     updateData({ categories: newCategories });
   };
 
+  const getLocalDateString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   return (
     <div className="animate-in fade-in slide-in-from-right-4 duration-300">
       {/* Section 1: Dados da Operação */}
@@ -41,7 +49,7 @@ const Step1: React.FC<Step1Props> = ({ data, updateData, onNext, svcOptions }) =
                 className="w-full h-12 px-4 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                 type="date"
                 value={data.date}
-                max={new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0]}
+                max={getLocalDateString()}
                 onChange={(e) => updateData({ date: e.target.value })}
               />
               <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">calendar_month</span>

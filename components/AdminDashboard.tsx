@@ -10,16 +10,23 @@ interface AdminDashboardProps {
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const getLocalDateString = (d = new Date()) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const [selectedDate, setSelectedDate] = useState<string>(getLocalDateString());
   const [reports, setReports] = useState<any[]>([]);
   const [svcs, setSvcs] = useState<SVC[]>([]);
   const [loading, setLoading] = useState(false);
   
   const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'>('daily');
   const [startDate, setStartDate] = useState<string>(
-    new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0]
+    getLocalDateString(new Date(new Date().setDate(new Date().getDate() - 7)))
   );
-  const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState<string>(getLocalDateString());
   const [utilizationData, setUtilizationData] = useState<any[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
@@ -28,7 +35,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [mercadoLivreSvcs, setMercadoLivreSvcs] = useState<string[]>([]);
   
   // States for Import Route
-  const [importDate, setImportDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [importDate, setImportDate] = useState<string>(getLocalDateString());
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [selectedPlateCol, setSelectedPlateCol] = useState<string>('');
@@ -36,7 +43,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [importSuccess, setImportSuccess] = useState(false);
 
   // States for Audit Query
-  const [auditQueryDate, setAuditQueryDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [auditQueryDate, setAuditQueryDate] = useState<string>(getLocalDateString());
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditResults, setAuditResults] = useState<any[] | null>(null);
 
@@ -414,7 +421,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             <input
               type="date"
               value={selectedDate}
-              max={new Date().toISOString().split('T')[0]}
+              max={getLocalDateString()}
               onChange={(e) => setSelectedDate(e.target.value)}
               className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 focus:ring-2 focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200 shadow-inner transition-colors"
             />
@@ -446,11 +453,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Data Inicial</label>
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} max={new Date().toISOString().split('T')[0]} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200 shadow-inner transition-colors" />
+              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} max={getLocalDateString()} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200 shadow-inner transition-colors" />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Data Final</label>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} max={new Date().toISOString().split('T')[0]} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200 shadow-inner transition-colors" />
+              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} max={getLocalDateString()} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200 shadow-inner transition-colors" />
             </div>
           </div>
         </div>
@@ -481,7 +488,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
               <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Data Referente à Planilha</label>
-                <input type="date" value={importDate} onChange={e => {setImportDate(e.target.value); setImportSuccess(false);}} max={new Date().toISOString().split('T')[0]} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200" />
+                <input type="date" value={importDate} onChange={e => {setImportDate(e.target.value); setImportSuccess(false);}} max={getLocalDateString()} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200" />
               </div>
               
               <div>
@@ -523,7 +530,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             <div className="flex flex-col md:flex-row gap-4 items-end">
               <div className="w-full md:w-1/3">
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Data da Consulta</label>
-                <input type="date" value={auditQueryDate} onChange={e => {setAuditQueryDate(e.target.value); setAuditResults(null);}} max={new Date().toISOString().split('T')[0]} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200" />
+                <input type="date" value={auditQueryDate} onChange={e => {setAuditQueryDate(e.target.value); setAuditResults(null);}} max={getLocalDateString()} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200" />
               </div>
 
               <div className="w-full md:w-auto">

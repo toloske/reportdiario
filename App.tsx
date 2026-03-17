@@ -18,8 +18,16 @@ const App: React.FC = () => {
   const [svcOptions, setSvcOptions] = useState<SVC[]>([]);
   const [loadingSvcs, setLoadingSvcs] = useState(true);
 
+  const getLocalDateString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const [formData, setFormData] = useState<FormData>({
-    date: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0],
+    date: getLocalDateString(),
     svc: '',
     categories: INITIAL_CATEGORIES,
     vehicleStatuses: [],
@@ -90,7 +98,7 @@ const App: React.FC = () => {
 
   const handleReset = () => {
     setFormData({
-      date: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0],
+      date: getLocalDateString(),
       svc: '',
       categories: INITIAL_CATEGORIES,
       vehicleStatuses: [],
