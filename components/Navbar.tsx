@@ -13,7 +13,7 @@ interface NavbarProps {
 const Navbar: React.FC<NavbarProps> = ({ view, step, onBack, onAdminClick, title }) => {
     return (
         <nav className="sticky top-0 z-40 bg-primary shadow-lg shadow-blue-900/20 backdrop-blur-sm bg-opacity-95 text-white transition-all duration-300">
-            <div className="max-w-md mx-auto px-4 h-16 flex items-center justify-between">
+            <div className={`mx-auto h-16 flex items-center justify-between ${view === View.ADMIN ? 'w-full px-6' : 'max-w-md px-4'}`}>
 
                 {/* Left Side: Logo or Back Button */}
                 <div className="flex items-center gap-3">

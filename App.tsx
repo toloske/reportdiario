@@ -124,7 +124,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50 font-display max-w-md mx-auto shadow-2xl shadow-blue-900/10 relative overflow-hidden border-x border-slate-200">
+    <div className={`flex flex-col min-h-screen bg-slate-50 font-display mx-auto relative overflow-hidden ${view === View.ADMIN ? 'w-full' : 'max-w-md shadow-2xl shadow-blue-900/10 border-x border-slate-200'}`}>
       {/* Header / Navbar */}
       <Navbar
         view={view}
