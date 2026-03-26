@@ -60,6 +60,14 @@ export const saveReport = async (data: FormData): Promise<SavedReport | null> =>
       if (v.justification === 'Carro reserva' && v.otherJustification) {
         just += ` (${v.otherJustification})`;
       }
+      if (v.justification === 'Sem Driver' && v.hiringForecast) {
+        let formattedDate = v.hiringForecast;
+        if (formattedDate.includes('-')) {
+          const parts = formattedDate.split('-');
+          if (parts.length === 3) formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+        just += ` (Previsão: ${formattedDate})`;
+      }
       return just;
     }
   });

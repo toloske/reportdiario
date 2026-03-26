@@ -77,7 +77,7 @@ const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSav
                             <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider hidden sm:block">Rodou?</span>
                             <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-fit">
                               <button
-                                onClick={() => updateVehicle(vehicle.plate, { ranToday: true, justification: undefined, otherJustification: undefined })}
+                                onClick={() => updateVehicle(vehicle.plate, { ranToday: true, justification: undefined, otherJustification: undefined, hiringForecast: undefined })}
                                 className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${vehicle.ranToday ? 'bg-primary text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
                               >
                                 Sim
@@ -114,6 +114,18 @@ const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSav
                                   rows={2}
                                   value={vehicle.otherJustification || ''}
                                   onChange={(e) => updateVehicle(vehicle.plate, { otherJustification: e.target.value })}
+                                />
+                              </div>
+                            )}
+
+                            {vehicle.justification === 'Sem Driver' && (
+                              <div className="mt-2 text-left">
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">Previsão de contratação (Data limite)</label>
+                                <input
+                                  type="date"
+                                  className="w-full rounded-lg border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-sm focus:ring-primary focus:border-primary p-2 border"
+                                  value={vehicle.hiringForecast || ''}
+                                  onChange={(e) => updateVehicle(vehicle.plate, { hiringForecast: e.target.value })}
                                 />
                               </div>
                             )}

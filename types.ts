@@ -22,6 +22,7 @@ export interface VehicleStatus {
   ranToday: boolean;
   justification?: string;
   otherJustification?: string;
+  hiringForecast?: string;
   modal?: string;
   operation?: string;
 }
