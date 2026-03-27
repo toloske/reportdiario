@@ -18,6 +18,15 @@ const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSav
       alert(`Por favor, selecione uma justificativa para o veículo ${missingJustification.plate}.`);
       return;
     }
+
+    const missingSemDriverInfo = data.vehicleStatuses.find(
+      v => !v.ranToday && v.justification === 'Sem Driver' && !v.hiringForecast
+    );
+    if (missingSemDriverInfo) {
+      alert(`Para o veículo ${missingSemDriverInfo.plate} (Sem Driver), é obrigatório informar a Previsão de contratação.`);
+      return;
+    }
+
     onSubmit();
   };
   const updateVehicle = (plate: string, updates: Partial<VehicleStatus>) => {
