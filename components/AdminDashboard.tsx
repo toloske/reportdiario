@@ -23,11 +23,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [fixedVehicles, setFixedVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'|'export'>('daily');
   const [startDate, setStartDate] = useState<string>(
     getLocalDateString(new Date(new Date().setDate(new Date().getDate() - 7)))
   );
   const [endDate, setEndDate] = useState<string>(getLocalDateString());
+  const [exportStartDate, setExportStartDate] = useState<string>(
+    getLocalDateString(new Date(new Date().setDate(new Date().getDate() - 7)))
+  );
+  const [exportEndDate, setExportEndDate] = useState<string>(getLocalDateString());
+  const [exportLoading, setExportLoading] = useState(false);
   const [utilizationData, setUtilizationData] = useState<any[]>([]);
   const [justificationStats, setJustificationStats] = useState<{reason: string, count: number}[]>([]);
   const [dailyIdleStats, setDailyIdleStats] = useState<{date: string, idle: number}[]>([]);
@@ -290,6 +295,68 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     document.body.removeChild(link);
   };
 
+  const handleExportRangeAction = async (type: 'fleet' | 'offer') => {
+    setExportLoading(true);
+    const fetchedReports = await getReportsByDateRange(exportStartDate, exportEndDate);
+    if (!fetchedReports || fetchedReports.length === 0) {
+      alert("Nenhum dado encontrado para o período selecionado.");
+      setExportLoading(false);
+      return;
+    }
+
+    if (type === 'fleet') {
+      const rows = [["Data", "SVC", "Placa", "Motivo"]];
+      fetchedReports.forEach(report => {
+        const svc = report.svc_id;
+        const rDate = report.date.split('-').reverse().join('/');
+        if (report.justifications) {
+          const justs = report.justifications.split('; ');
+          justs.forEach((just: string) => {
+            const match = just.match(/"?([A-Za-z0-9]+)"?\s*-\s*(.*)/);
+            if (match) {
+              rows.push([rDate, svc, match[1], match[2]]);
+            } else {
+              rows.push([rDate, svc, "N/A", just]);
+            }
+          });
+        }
+      });
+      const csvContent = rows.map(r => r.join(";")).join("\n");
+      const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `Relatorio_Frota_${exportStartDate}_a_${exportEndDate}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      const rows = [["Data", "SVC", "Modal", "Oferta", "Capacidade"]];
+      fetchedReports.forEach(report => {
+        const svc = report.svc_id;
+        const rDate = report.date.split('-').reverse().join('/');
+        INITIAL_CATEGORIES.forEach(cat => {
+           const key = cat.id.replace(/-/g, '_');
+           const offer = report[`offer_${key}`];
+           const capacity = report[`capacity_${key}`];
+           if (offer != null || capacity != null) {
+             rows.push([rDate, svc, cat.name, (offer || 0).toString(), (capacity || 0).toString()]);
+           }
+        });
+      });
+      const csvContent = rows.map(r => r.join(";")).join("\n");
+      const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `Oferta_Capacidade_${exportStartDate}_a_${exportEndDate}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+    setExportLoading(false);
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -473,6 +540,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         >
           Auditoria de Rotas (Planilha)
         </button>
+        <button 
+          onClick={() => setActiveTab('export')}
+          className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${activeTab === 'export' ? 'bg-primary text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}
+        >
+          Exportações
+        </button>
       </div>
 
       {activeTab === 'daily' && (
@@ -616,7 +689,43 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         </div>
       )}
 
-      {loading && activeTab !== 'audit' ? (
+      {activeTab === 'export' && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] border border-slate-200/60 dark:border-slate-800/80 space-y-6">
+          <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-primary">download</span>
+            </div>
+            <div>
+              <h3 className="font-black text-lg text-slate-800 dark:text-slate-100">Exportar Dados (Período)</h3>
+              <p className="text-xs text-slate-500">Exporte históricos de frota, oferta e capacidade em CSV aplicando filtros de data.</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Data Inicial</label>
+              <input type="date" value={exportStartDate} onChange={e => setExportStartDate(e.target.value)} max={getLocalDateString()} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Data Final</label>
+              <input type="date" value={exportEndDate} onChange={e => setExportEndDate(e.target.value)} max={getLocalDateString()} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200" />
+            </div>
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-4 mt-6">
+             <button onClick={() => handleExportRangeAction('fleet')} disabled={exportLoading} className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-900 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold rounded-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all shadow-md disabled:opacity-50">
+               {exportLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined text-[18px]">list_alt</span>}
+               Exportar Frota
+             </button>
+             <button onClick={() => handleExportRangeAction('offer')} disabled={exportLoading} className="flex-1 py-3.5 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all shadow-lg shadow-primary/30 disabled:opacity-50">
+               {exportLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined text-[18px]">local_shipping</span>}
+               Exportar Oferta/Cap.
+             </button>
+          </div>
+        </div>
+      )}
+
+      {loading && activeTab !== 'audit' && activeTab !== 'export' ? (
         <div className="flex flex-col items-center justify-center py-16 space-y-4">
           <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
           <p className="text-sm font-semibold text-slate-500 animate-pulse">Sincronizando dados...</p>
