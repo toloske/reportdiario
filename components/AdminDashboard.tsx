@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { getReportsByDate, getReportsByDateRange, saveDailyRoutes, getDailyRoutesByDate } from '../services/storageService';
+import { getReportsByDate, getReportsByDateRange, saveDailyRoutes, getDailyRoutesByDate, getDailyRoutesByDateRange, updateReportJustifications } from '../services/storageService';
 import { dataService, SVC, Vehicle } from '../services/dataService';
 import { INITIAL_CATEGORIES } from '../constants';
 import Papa from 'papaparse';
@@ -23,7 +23,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [fixedVehicles, setFixedVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'|'export'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'|'export'|'director'>('daily');
   const [startDate, setStartDate] = useState<string>(
     getLocalDateString(new Date(new Date().setDate(new Date().getDate() - 7)))
   );
@@ -45,7 +45,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [mercadoLivreSvcs, setMercadoLivreSvcs] = useState<string[]>([]);
   
   // States for Import Route
-  const [importDate, setImportDate] = useState<string>(getLocalDateString());
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [selectedPlateCol, setSelectedPlateCol] = useState<string>('');
@@ -57,6 +56,58 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditResults, setAuditResults] = useState<any[] | null>(null);
 
+  // Dashboard Diretoria States
+  const [dirStartDate, setDirStartDate] = useState(getLocalDateString());
+  const [dirEndDate, setDirEndDate] = useState(getLocalDateString());
+  const [dirSvcFilter, setDirSvcFilter] = useState('');
+  const [dirModalFilter, setDirModalFilter] = useState('');
+  const [dirConsolidateModals, setDirConsolidateModals] = useState(true);
+  const [dirData, setDirData] = useState<any[]>([]);
+  const [dirLoading, setDirLoading] = useState(false);
+  const [detailedUtilizationData, setDetailedUtilizationData] = useState<any[]>([]);
+  const [detSvcFilter, setDetSvcFilter] = useState('');
+  const [detStatusFilter, setDetStatusFilter] = useState<'all'|'ran'|'idle'>('all');
+  const [utilActiveTab, setUtilActiveTab] = useState<'overview'|'details'>('overview');
+  const [editingPlateKey, setEditingPlateKey] = useState<string | null>(null);
+  const [editingPlateJust, setEditingPlateJust] = useState('');
+  const [isSavingJust, setIsSavingJust] = useState(false);
+
+  const handleSaveJustification = async (date: string, plate: string, reportId: string, fullJustifications: string) => {
+    if (!reportId) return;
+    setIsSavingJust(true);
+    try {
+      let newJustsArray = fullJustifications.split('; ').map(j => j.trim());
+      const prefix = `"${plate}" -`;
+      let found = false;
+      for (let i = 0; i < newJustsArray.length; i++) {
+        if (newJustsArray[i].startsWith(prefix)) {
+          newJustsArray[i] = `"${plate}" - ${editingPlateJust}`;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        newJustsArray.push(`"${plate}" - ${editingPlateJust}`);
+      }
+
+      const updatedStr = newJustsArray.join('; ');
+      await updateReportJustifications(reportId, updatedStr);
+      setEditingPlateKey(null);
+
+      // Local update detailedData to avoid heavy reload
+      setDetailedUtilizationData(prev => prev.map(d => {
+         if (d.date === date && d.plate === plate) {
+            return { ...d, reason: editingPlateJust, fullJustifications: updatedStr };
+         }
+         return d;
+      }));
+    } catch (e) {
+      alert("Erro ao salvar a justificativa.");
+    } finally {
+      setIsSavingJust(false);
+    }
+  };
+
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
@@ -65,7 +116,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       const fv = await dataService.fetchFixedFleetVehicles();
       setFixedVehicles(fv);
 
-      // Fetch which SVC IDs are exclusively responsible for "Mercado Livre"
       const { data: mlVehicles } = await supabase
         .from('vehicles')
         .select('svc_id')
@@ -85,12 +135,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
   useEffect(() => {
     const loadUtilization = async () => {
-      // Ensure svcs are loaded so we can filter them by name/operation
       if (activeTab === 'utilization' && svcs.length > 0) {
         setLoading(true);
-        const fetchedReports = await getReportsByDateRange(startDate, endDate);
+        const [fetchedReports, fetchedRoutes] = await Promise.all([
+          getReportsByDateRange(startDate, endDate),
+          getDailyRoutesByDateRange(startDate, endDate)
+        ]);
         
-        // Find valid SVCs for ML (excluding FIRST MILE)
         const validSvcIds = svcs
           .filter(svc => mercadoLivreSvcs.includes(svc.id) && svc.name !== 'FIRST MILE')
           .map(svc => svc.id);
@@ -139,13 +190,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                         }
                         
                         if (!reason.includes('RODOU')) {
-                            const simpleReason = reason.split(' - ')[0].trim();
+                            let simpleReason = reason.split(' - ')[0].trim();
+                            if (simpleReason.toLowerCase().startsWith('sem driver')) {
+                                simpleReason = 'Sem Driver';
+                            }
                             reasonCounts[simpleReason] = (reasonCounts[simpleReason] || 0) + 1;
                             
                             dailyIdle++;
                             svcOffenderCounts[rep.svc_id] = (svcOffenderCounts[rep.svc_id] || 0) + 1;
                             
-                            // Track plate
                             if (!plateOffenderCounts[plate]) {
                                 plateOffenderCounts[plate] = { count: 0, reasons: new Set() };
                             }
@@ -162,12 +215,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           const adjustedRan = ran * 1.162790698;
           let utilizationPerc = 0;
           let utilizationTotalPerc = 0;
+          let utilizationPurePerc = 0;
+          let utilizationPureTotalPerc = 0;
           
           if (available > 0) {
             utilizationPerc = (adjustedRan / available) * 100;
+            utilizationPurePerc = (ran / available) * 100;
           }
           if (totalFixedPlates > 0) {
             utilizationTotalPerc = (adjustedRan / totalFixedPlates) * 100;
+            utilizationPureTotalPerc = (ran / totalFixedPlates) * 100;
           }
 
           utilData.push({
@@ -178,14 +235,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             ranAmount: ran,
             adjustedRan,
             utilizationPerc,
-            utilizationTotalPerc
+            utilizationTotalPerc,
+            utilizationPurePerc,
+            utilizationPureTotalPerc
           });
           
           dailyIdleList.push({ date, idle: dailyIdle });
         });
 
         setUtilizationData(utilData);
-        setDailyIdleStats(dailyIdleList.reverse()); // Reverse to show earliest first
+        setDailyIdleStats(dailyIdleList.reverse());
         
         const statsArray = Object.keys(reasonCounts)
             .map(reason => ({ reason, count: reasonCounts[reason] }))
@@ -206,52 +265,162 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             .sort((a,b) => b.count - a.count).slice(0, 15);
         setTopPlateStats(plateArray);
         
+        // --- DETAILED PLATE-BY-PLATE LOGIC ---
+        const routesByDateAndPlate: Record<string, boolean> = {};
+        fetchedRoutes.forEach(r => {
+            routesByDateAndPlate[`${r.date}|${r.plate}`] = true;
+        });
+
+        const reportCache: Record<string, {reason: string, reportId: string, fullJustifications: string}> = {};
+        fetchedReports.forEach(rep => {
+            if (validSvcIds.includes(rep.svc_id) && rep.justifications) {
+                const justs = rep.justifications.split('; ');
+                justs.forEach((j: string) => {
+                    const match = j.match(/"?([A-Za-z0-9]+)"?\s*-\s*(.*)/);
+                    if (match) {
+                        reportCache[`${rep.date}|${match[1]}`] = {
+                            reason: match[2].trim(),
+                            reportId: rep.id,
+                            fullJustifications: rep.justifications
+                        };
+                    }
+                });
+            }
+        });
+
+        const detailedData: any[] = [];
+        const validFixedVehicles = fixedVehicles.filter(v => validSvcIds.includes(v.svc_id));
+        const allDates = Array.from(new Set([...Object.keys(grouped), ...fetchedRoutes.filter(r => validSvcIds.includes(r.svc_id) || r.svc_id === 'XPT').map(r => r.date)])).sort((a,b) => b.localeCompare(a));
+        
+        allDates.forEach(date => {
+            if (date >= startDate && date <= endDate) {
+                validFixedVehicles.forEach(v => {
+                    const plate = v.plate;
+                    const svc = v.svc_id;
+                    const didRun = routesByDateAndPlate[`${date}|${plate}`] || false;
+                    const cacheEntry = reportCache[`${date}|${plate}`];
+                    let reason = cacheEntry ? cacheEntry.reason : '';
+                    const reportId = cacheEntry ? cacheEntry.reportId : null;
+                    const fullJustifications = cacheEntry ? cacheEntry.fullJustifications : null;
+                    
+                    if (didRun && !reason) {
+                        reason = 'RODOU (Identificado via Rota)';
+                    } else if (didRun && !reason.includes('RODOU')) {
+                        reason = `[RODOU] ${reason}`;
+                    } else if (!didRun && !reason) {
+                        reason = 'Sem justificativa preenchida';
+                    }
+
+                    detailedData.push({
+                        date,
+                        svc,
+                        plate,
+                        didRun,
+                        reason,
+                        reportId,
+                        fullJustifications
+                    });
+                });
+            }
+        });
+
+        setDetailedUtilizationData(detailedData);
         setLoading(false);
       }
     };
+
     loadUtilization();
   }, [startDate, endDate, activeTab, svcs, mercadoLivreSvcs, fixedVehicles]);
 
-  const reportedSvcIds = reports.map(r => r.svc_id);
-  const missingSvcs = svcs.filter(svc =>
-    !reportedSvcIds.includes(svc.id) &&
-    mercadoLivreSvcs.includes(svc.id) &&
-    svc.name !== 'FIRST MILE'
-  );
+  useEffect(() => {
+    const fetchDirData = async () => {
+      if (activeTab === 'director') {
+        setDirLoading(true);
+        const fetchedReports = await getReportsByDateRange(dirStartDate, dirEndDate);
+        const fetchedRoutes = await getDailyRoutesByDateRange(dirStartDate, dirEndDate);
+        
+        const mapVehicleToCategory = (rawType: string): string => {
+            const t = rawType.toUpperCase().trim();
+            if (['BULK - VUC EQUIPE ÚNICA POOL', 'UTILITÁRIOS', 'BULK - VAN EQUIPE ÚNICA POOL', 'VAN', 'VEÍCULO DE PASSEIO', 'VUC'].includes(t)) return t;
+            return ''; 
+        };
+
+        const utilizationGroups: Record<string, Set<string>> = {}; 
+        const utilizationCounts: Record<string, number> = {}; 
+        fetchedRoutes.forEach(route => {
+            const routeXpt = (route.xpt || '').trim().toUpperCase();
+            const svc = routeXpt === 'ESP8' ? 'XPT' : (route.svc_id || '').trim();
+            const mappedType = mapVehicleToCategory(route.vehicle_type);
+            if (!svc || !mappedType) return;
+            const key = `${route.date}|${svc}|${mappedType}`;
+            if (!utilizationGroups[key]) utilizationGroups[key] = new Set();
+            utilizationGroups[key].add(route.plate);
+            utilizationCounts[key] = (utilizationCounts[key] || 0) + 1;
+        });
+
+        const combinedData: Record<string, { Date: string, Svc: string, Modals: Record<string, { Offer: number, Utilized: number, UtilizedRoutes: number }> }> = {};
+        fetchedReports.forEach(report => {
+            const combinedKey = `${report.date}|${report.svc_id}`;
+            if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: report.date, Svc: report.svc_id, Modals: {} };
+            INITIAL_CATEGORIES.forEach(cat => {
+                const modalName = cat.name.toUpperCase();
+                if (!combinedData[combinedKey].Modals[modalName]) combinedData[combinedKey].Modals[modalName] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
+                combinedData[combinedKey].Modals[modalName].Offer += (report[`offer_${cat.id.replace(/-/g, '_')}`] || 0);
+            });
+        });
+
+        Object.keys(utilizationGroups).forEach(key => {
+            const [date, svc, vehicleType] = key.split('|');
+            const combinedKey = `${date}|${svc}`;
+            if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: date, Svc: svc, Modals: {} };
+            if (!combinedData[combinedKey].Modals[vehicleType]) combinedData[combinedKey].Modals[vehicleType] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
+            combinedData[combinedKey].Modals[vehicleType].Utilized += utilizationGroups[key].size;
+            combinedData[combinedKey].Modals[vehicleType].UtilizedRoutes += utilizationCounts[key];
+        });
+
+        const finalDirData: any[] = [];
+        Object.values(combinedData).forEach(entry => {
+            Object.keys(entry.Modals).forEach(modalName => {
+                const item = entry.Modals[modalName];
+                if (item.Offer > 0 || item.Utilized > 0 || item.UtilizedRoutes > 0) {
+                   finalDirData.push({
+                      date: entry.Date,
+                      svc: entry.Svc,
+                      modal: modalName,
+                      offer: item.Offer,
+                      utilized: item.Utilized,
+                      utilizedRoutes: item.UtilizedRoutes
+                   });
+                }
+            });
+        });
+
+        setDirData(finalDirData);
+        setDirLoading(false);
+      }
+    };
+    fetchDirData();
+  }, [dirStartDate, dirEndDate, activeTab]);
 
   const handleExportCSV = () => {
     if (reports.length === 0) return;
-
-    // Header array (added Date)
-    const rows = [
-      ["Data", "SVC", "Placa", "Motivo"]
-    ];
-
-    // Build data rows
+    const rows = [["Data", "SVC", "Placa", "Motivo"]];
     reports.forEach(report => {
       const svc = report.svc_id;
-      // In this version, we use selectedDate as the Data column
       const rDate = selectedDate.split('-').reverse().join('/');
-
       if (report.justifications) {
         const justs = report.justifications.split('; ');
         justs.forEach((just: string) => {
-          // just is in format: "PLACA" - MOTIVO
           const match = just.match(/"?([A-Za-z0-9]+)"?\s*-\s*(.*)/);
           if (match) {
-            const plate = match[1];
-            const reason = match[2];
-            rows.push([rDate, svc, plate, reason]);
+            rows.push([rDate, svc, match[1], match[2]]);
           } else {
-            // fallback if string format is different
             rows.push([rDate, svc, "N/A", just]);
           }
         });
       }
     });
-
     const csvContent = rows.map(r => r.join(";")).join("\n");
-    // Add BOM for Excel UTF-8 compatibility
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -264,26 +433,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
   const handleExportOfferCapacityCSV = () => {
     if (reports.length === 0) return;
-
-    const rows = [
-      ["Data", "SVC", "Modal", "Oferta", "Capacidade"]
-    ];
-
+    const rows = [["Data", "SVC", "Modal", "Oferta", "Capacidade"]];
     const rDate = selectedDate.split('-').reverse().join('/');
     reports.forEach(report => {
       const svc = report.svc_id;
-      
       INITIAL_CATEGORIES.forEach(cat => {
          const key = cat.id.replace(/-/g, '_');
          const offer = report[`offer_${key}`];
          const capacity = report[`capacity_${key}`];
-         
          if (offer != null || capacity != null) {
            rows.push([rDate, svc, cat.name, (offer || 0).toString(), (capacity || 0).toString()]);
          }
       });
     });
-
     const csvContent = rows.map(r => r.join(";")).join("\n");
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -299,61 +461,157 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     setExportLoading(true);
     const fetchedReports = await getReportsByDateRange(exportStartDate, exportEndDate);
     if (!fetchedReports || fetchedReports.length === 0) {
-      alert("Nenhum dado encontrado para o período selecionado.");
+      alert("Nenhum dado encontrado.");
       setExportLoading(false);
       return;
     }
-
-    if (type === 'fleet') {
-      const rows = [["Data", "SVC", "Placa", "Motivo"]];
-      fetchedReports.forEach(report => {
-        const svc = report.svc_id;
-        const rDate = report.date.split('-').reverse().join('/');
+    const rows = type === 'fleet' ? [["Data", "SVC", "Placa", "Motivo"]] : [["Data", "SVC", "Modal", "Oferta", "Capacidade"]];
+    fetchedReports.forEach(report => {
+      const svc = report.svc_id;
+      const rDate = report.date.split('-').reverse().join('/');
+      if (type === 'fleet') {
         if (report.justifications) {
-          const justs = report.justifications.split('; ');
-          justs.forEach((just: string) => {
+          report.justifications.split('; ').forEach((just: string) => {
             const match = just.match(/"?([A-Za-z0-9]+)"?\s*-\s*(.*)/);
-            if (match) {
-              rows.push([rDate, svc, match[1], match[2]]);
-            } else {
-              rows.push([rDate, svc, "N/A", just]);
-            }
+            rows.push([rDate, svc, match ? match[1] : "N/A", match ? match[2] : just]);
           });
         }
-      });
-      const csvContent = rows.map(r => r.join(";")).join("\n");
-      const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `Relatorio_Frota_${exportStartDate}_a_${exportEndDate}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else {
-      const rows = [["Data", "SVC", "Modal", "Oferta", "Capacidade"]];
-      fetchedReports.forEach(report => {
-        const svc = report.svc_id;
-        const rDate = report.date.split('-').reverse().join('/');
+      } else {
         INITIAL_CATEGORIES.forEach(cat => {
            const key = cat.id.replace(/-/g, '_');
            const offer = report[`offer_${key}`];
            const capacity = report[`capacity_${key}`];
-           if (offer != null || capacity != null) {
-             rows.push([rDate, svc, cat.name, (offer || 0).toString(), (capacity || 0).toString()]);
-           }
+           if (offer != null || capacity != null) rows.push([rDate, svc, cat.name, (offer || 0).toString(), (capacity || 0).toString()]);
         });
-      });
-      const csvContent = rows.map(r => r.join(";")).join("\n");
-      const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `Oferta_Capacidade_${exportStartDate}_a_${exportEndDate}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
+      }
+    });
+    const csvContent = rows.map(r => r.join(";")).join("\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `Export_${type}_${exportStartDate}_a_${exportEndDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setExportLoading(false);
+  };
+
+  const handleExportOfferVsUtilization = async (consolidated = false) => {
+    setExportLoading(true);
+    const fetchedReports = await getReportsByDateRange(exportStartDate, exportEndDate);
+    const fetchedRoutes = await getDailyRoutesByDateRange(exportStartDate, exportEndDate);
+    
+    const mapVehicleToCategory = (rawType: string): string => {
+        const t = rawType.toUpperCase().trim();
+        if (['BULK - VUC EQUIPE ÚNICA POOL', 'UTILITÁRIOS', 'BULK - VAN EQUIPE ÚNICA POOL', 'VAN', 'VEÍCULO DE PASSEIO', 'VUC'].includes(t)) return t;
+        return ''; 
+    };
+
+    const utilizationGroups: Record<string, Set<string>> = {}; 
+    const utilizationCounts: Record<string, number> = {}; 
+    fetchedRoutes.forEach(route => {
+        const routeXpt = (route.xpt || '').trim().toUpperCase();
+        const svc = routeXpt === 'ESP8' ? 'XPT' : (route.svc_id || '').trim();
+        const mappedType = mapVehicleToCategory(route.vehicle_type);
+        if (!svc || !mappedType) return;
+        const key = consolidated ? `${route.date}|${svc}|${mappedType}` : `${route.date}|${svc}|${mappedType}`;
+        if (!utilizationGroups[key]) utilizationGroups[key] = new Set();
+        utilizationGroups[key].add(route.plate);
+        utilizationCounts[key] = (utilizationCounts[key] || 0) + 1;
+    });
+
+    const combinedData: Record<string, { Date: string, Svc: string, Modals: Record<string, { Offer: number, Utilized: number, UtilizedRoutes: number }> }> = {};
+    fetchedReports.forEach(report => {
+        const combinedKey = `${report.date}|${report.svc_id}`;
+        if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: report.date, Svc: report.svc_id, Modals: {} };
+        INITIAL_CATEGORIES.forEach(cat => {
+            const modalName = cat.name.toUpperCase();
+            if (!combinedData[combinedKey].Modals[modalName]) combinedData[combinedKey].Modals[modalName] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
+            combinedData[combinedKey].Modals[modalName].Offer += (report[`offer_${cat.id.replace(/-/g, '_')}`] || 0);
+        });
+    });
+
+    Object.keys(utilizationGroups).forEach(key => {
+        const [date, svc, vehicleType] = key.split('|');
+        const combinedKey = `${date}|${svc}`;
+        if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: date, Svc: svc, Modals: {} };
+        if (!combinedData[combinedKey].Modals[vehicleType]) combinedData[combinedKey].Modals[vehicleType] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
+        combinedData[combinedKey].Modals[vehicleType].Utilized += utilizationGroups[key].size;
+        combinedData[combinedKey].Modals[vehicleType].UtilizedRoutes += utilizationCounts[key];
+    });
+
+    const rows = [["Data", "SVC", "Modal", "Oferta", "Utilizado (Placas Únicas)", "Rotas Totais (Ida/Volta)"]];
+    Object.values(combinedData).forEach(entry => {
+        Object.keys(entry.Modals).forEach(modalName => {
+            const item = entry.Modals[modalName];
+            if (item.Offer > 0 || item.Utilized > 0 || item.UtilizedRoutes > 0) rows.push([entry.Date.split('-').reverse().join('/'), entry.Svc, modalName, item.Offer.toString(), item.Utilized.toString(), item.UtilizedRoutes.toString()]);
+        });
+    });
+
+    const csvContent = rows.map(r => r.join(";")).join("\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `Oferta_vs_Utilizado_${exportStartDate}_a_${exportEndDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setExportLoading(false);
+  };
+
+  const handleExportOfferVsUtilizationConsolidado = async () => {
+    setExportLoading(true);
+    const fetchedReports = await getReportsByDateRange(exportStartDate, exportEndDate);
+    const fetchedRoutes = await getDailyRoutesByDateRange(exportStartDate, exportEndDate);
+    
+    const consolidated: Record<string, { Offer: number, Utilized: number }> = {};
+    
+    fetchedReports.forEach(r => {
+        const key = `${r.date}|${r.svc_id}`;
+        if (!consolidated[key]) consolidated[key] = { Offer: 0, Utilized: 0 };
+        INITIAL_CATEGORIES.forEach(cat => consolidated[key].Offer += (r[`offer_${cat.id.replace(/-/g, '_')}`] || 0));
+    });
+    
+    const mapVehicleToCategory = (rawType: string): string => {
+        const t = rawType.toUpperCase().trim();
+        if (['BULK - VUC EQUIPE ÚNICA POOL', 'UTILITÁRIOS', 'BULK - VAN EQUIPE ÚNICA POOL', 'VAN', 'VEÍCULO DE PASSEIO', 'VUC'].includes(t)) return t;
+        return ''; 
+    };
+
+    const routeCounts: Record<string, Set<string>> = {};
+    const routeTotals: Record<string, number> = {};
+    fetchedRoutes.forEach(r => {
+        const routeXpt = (r.xpt || '').trim().toUpperCase();
+        const svc = routeXpt === 'ESP8' ? 'XPT' : (r.svc_id || '').trim();
+        const mappedType = mapVehicleToCategory(r.vehicle_type);
+        if (!svc || !mappedType) return;
+        const key = `${r.date}|${svc}`;
+        if (!routeCounts[key]) routeCounts[key] = new Set();
+        routeCounts[key].add(r.plate);
+        routeTotals[key] = (routeTotals[key] || 0) + 1;
+    });
+    
+    const rows = [["Data", "SVC", "Oferta Total", "Utilizado Total (Placas Únicas)", "Rotas Totais (Ida/Volta)"]];
+    
+    Object.keys(routeCounts).forEach(key => {
+        if (!consolidated[key]) consolidated[key] = { Offer: 0, Utilized: 0 };
+    });
+    Object.keys(consolidated).forEach(key => {
+        const [date, svc] = key.split('|');
+        rows.push([date.split('-').reverse().join('/'), svc, consolidated[key].Offer.toString(), (routeCounts[key]?.size || 0).toString(), (routeTotals[key] || 0).toString()]);
+    });
+    
+    const csvContent = rows.map(r => r.join(";")).join("\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `Consolidado_SVC_${exportStartDate}_a_${exportEndDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
     setExportLoading(false);
   };
 
@@ -361,16 +619,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setCsvFile(file);
-    setImportSuccess(false);
-    
-    // Auto-detect columns
     Papa.parse(file, {
       header: true,
       preview: 5,
       complete: (results) => {
         if (results.meta.fields) {
           setCsvHeaders(results.meta.fields);
-          // Try auto select Route_ID column specifically
           const routeMatch = results.meta.fields.find(f => f.toLowerCase().includes('route_id') || f.toLowerCase().includes('route'));
           if (routeMatch) setSelectedPlateCol(routeMatch);
         }
@@ -381,171 +635,105 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const handleImportRoutes = async () => {
     if (!csvFile || !selectedPlateCol) return;
     setImportLoading(true);
-    setImportSuccess(false);
-
     Papa.parse(csvFile, {
       header: true,
       skipEmptyLines: true,
       complete: async (results) => {
         const payloadToInsert: any[] = [];
-        
         results.data.forEach((row: any) => {
-          const routeIdCol = selectedPlateCol; // We now use this as Route_ID selector
-          const rawRouteId = row[routeIdCol] || row['Route_ID'];
-          
-          // Assuming plate can be found in 'Placa'
+          const rawRouteId = row[selectedPlateCol];
           const rawPlate = row['Placa'] || row['Plate'] || row['placa'];
-          const rawDriverId = row['Driver_ID'] || row['Driver ID'] || '';
-          const rawVehicle = row['Veículo'] || row['Vehicle'] || '';
+          const rawDate = row['Data'] || row['Data '] || row['Date'] || '';
           
-          if (rawRouteId && typeof rawRouteId === 'string' && rawPlate) {
-            const cleanedPlate = rawPlate.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-            if (cleanedPlate.length > 4) {
-              payloadToInsert.push({
-                 route_id: rawRouteId.trim(),
-                 date: importDate,
-                 plate: cleanedPlate,
-                 driver_id: rawDriverId.trim(),
-                 vehicle_type: rawVehicle.trim()
-              });
-            }
+          let formattedDate = '';
+          if (rawDate && rawDate.includes('/')) {
+             const parts = rawDate.split('/');
+             if (parts.length === 3) formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+          } else if (rawDate && rawDate.includes('-')) {
+             formattedDate = rawDate; // Ja no formato YYYY-MM-DD
+          }
+
+          if (rawRouteId && rawPlate && formattedDate) {
+            payloadToInsert.push({
+                 route_id: String(rawRouteId).trim(),
+                 date: formattedDate,
+                 plate: String(rawPlate).replace(/[^A-Za-z0-9]/g, '').toUpperCase(),
+                 svc_id: String(row['SVC'] || '').trim(),
+                 vehicle_type: String(row['Veículo'] || row['Modal'] || '').trim(),
+                 xpt: String(row['XPT'] || '').trim()
+            });
           }
         });
-
         if (payloadToInsert.length > 0) {
-          try {
-            await saveDailyRoutes(payloadToInsert);
-            setImportSuccess(true);
-            setCsvFile(null); // reset UI for import
-            setCsvHeaders([]);
-            setSelectedPlateCol('');
-            // Automatically switch audit date to the one just imported to make it easy
-            setAuditQueryDate(importDate); 
-          } catch(e) {
-            console.error("Failed to save routes:", e);
-            alert("Erro ao salvar no banco de dados.");
-          }
+          await saveDailyRoutes(payloadToInsert);
+          setImportSuccess(true);
         }
         setImportLoading(false);
-      },
-      error: (error) => {
-        console.error("PapaParse Error:", error);
-        setImportLoading(false);
-        alert("Erro ao ler o arquivo CSV.");
       }
     });
   };
 
   const runAudit = async () => {
     setAuditLoading(true);
-
     const routes = await getDailyRoutesByDate(auditQueryDate);
     setAuditResults(routes);
-    
     setAuditLoading(false);
   };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (passwordInput === '@Torpedo22') {
+    if (passwordInput === '@TransmanaADM22') {
       setIsAuthenticated(true);
-      setPasswordError(false);
     } else {
       setPasswordError(true);
-      setPasswordInput('');
     }
   };
 
+  const missingSvcs = svcs.filter(svc => 
+    mercadoLivreSvcs.includes(svc.id) && 
+    svc.name !== 'FIRST MILE' &&
+    !reports.some(r => r.svc_id === svc.id)
+  );
+
   if (!isAuthenticated) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] p-4 font-sans animate-in fade-in zoom-in-95 duration-300">
-        <div className="bg-white dark:bg-slate-900 w-full max-w-sm p-8 rounded-3xl shadow-xl border border-slate-200/60 dark:border-slate-800 text-center relative overflow-hidden">
-          {/* Decorative background circle */}
-          <div className="absolute -top-20 -right-20 w-40 h-40 bg-primary/5 rounded-full blur-3xl"></div>
-
-          <div className="w-16 h-16 bg-gradient-to-tr from-primary/20 to-blue-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 transform rotate-3">
-            <span className="material-symbols-outlined text-3xl font-light text-primary -rotate-3">lock</span>
-          </div>
-
-          <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-2 tracking-tight">Acesso Restrito</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mb-8">Digite a senha para acessar o painel administrativo.</p>
-
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
+        <div className="bg-white dark:bg-slate-900 w-full max-w-sm p-8 rounded-3xl shadow-xl border border-slate-200 text-center">
+          <h2 className="text-2xl font-black mb-6">Acesso Restrito</h2>
           <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <input
-                type="password"
-                placeholder="Senha Master"
-                value={passwordInput}
-                onChange={(e) => {
-                  setPasswordInput(e.target.value);
-                  setPasswordError(false);
-                }}
-                className={`w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-950 border ${passwordError ? 'border-red-400 focus:ring-red-400/20' : 'border-slate-200 dark:border-slate-800 focus:border-primary focus:ring-primary/20'} rounded-xl text-center text-lg tracking-widest text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-4 transition-all placeholder:tracking-normal placeholder:text-sm`}
-                autoFocus
-              />
-              {passwordError && (
-                <p className="text-red-500 text-xs font-semibold mt-2 animate-in slide-in-from-top-1">Senha incorreta. Tente novamente.</p>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-slate-900 hover:bg-black dark:bg-primary dark:hover:bg-primary/90 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-slate-900/20 dark:shadow-primary/20 active:scale-[0.98] transition-all"
-            >
-              Acessar Painel
-            </button>
+            <input type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-center" placeholder="Senha" />
+            {passwordError && <p className="text-red-500 text-xs">Senha incorreta.</p>}
+            <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold">Acessar</button>
           </form>
-
-          <button
-            onClick={onBack}
-            className="mt-6 text-sm font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-          >
-            Voltar para o início
-          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-8 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-24 font-sans">
-      {/* Header Section */}
-      <div className="flex items-center justify-between bg-white dark:bg-slate-900 px-6 py-4 rounded-2xl shadow-sm border border-slate-200/60 dark:border-slate-800 backdrop-blur-sm sticky top-2 z-10 w-full overflow-hidden">
-        <h2 className="text-xl font-extrabold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Painel Master</h2>
-        <button
-          onClick={onBack}
-          className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-400 transition-all active:scale-90"
-        >
-          <span className="material-symbols-outlined text-[20px]">close</span>
-        </button>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-8 space-y-6 font-sans">
+      <div className="flex items-center justify-between bg-white dark:bg-slate-900 px-6 py-4 rounded-2xl shadow-sm border border-slate-200">
+        <h2 className="text-xl font-extrabold text-primary">Painel Master</h2>
+        <button onClick={onBack} className="p-2 bg-slate-100 rounded-full"><span className="material-symbols-outlined">close</span></button>
       </div>
 
-      {/* Tabs Row */}
-      <div className="flex flex-col md:flex-row gap-2 bg-white dark:bg-slate-900 p-2 rounded-2xl shadow-sm border border-slate-200/60 dark:border-slate-800 mb-8">
-        <button 
-          onClick={() => setActiveTab('daily')}
-          className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${activeTab === 'daily' ? 'bg-primary text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}
-        >
-          Visão Diária
-        </button>
-        <button 
-          onClick={() => setActiveTab('utilization')}
-          className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${activeTab === 'utilization' ? 'bg-primary text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}
-        >
-          Dashboard Utilização
-        </button>
-        <button 
-          onClick={() => setActiveTab('audit')}
-          className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${activeTab === 'audit' ? 'bg-primary text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}
-        >
-          Auditoria de Rotas (Planilha)
-        </button>
-        <button 
-          onClick={() => setActiveTab('export')}
-          className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${activeTab === 'export' ? 'bg-primary text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}
-        >
-          Exportações
-        </button>
+      <div className="flex justify-center gap-2 bg-white dark:bg-slate-900 p-2.5 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200/60 dark:border-slate-800/80 overflow-x-auto">
+        {[
+           { id: 'daily', label: 'Diário' },
+           { id: 'utilization', label: 'Utilização' },
+           { id: 'audit', label: 'Subir Rotas' },
+           { id: 'export', label: 'Exportar' },
+           { id: 'director', label: 'Ofertas SPOT' }
+        ].map((tab) => (
+          <button 
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`px-6 py-3 font-bold text-sm tracking-wide rounded-xl transition-all duration-300 whitespace-nowrap 
+              ${activeTab === tab.id ? 'bg-primary text-white shadow-md scale-[1.02]' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/80 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800'}`}
+          >
+            {tab.label.toUpperCase()}
+          </button>
+        ))}
       </div>
 
       {activeTab === 'daily' && (
@@ -586,15 +774,42 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       )}
 
       {activeTab === 'utilization' && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] border border-slate-200/60 dark:border-slate-800/80 space-y-5">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Data Inicial</label>
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} max={getLocalDateString()} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200 shadow-inner transition-colors" />
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl p-6 md:p-10 animate-fade-in w-full overflow-hidden">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+              <span className="material-symbols-outlined text-white">dashboard</span>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Data Final</label>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} max={getLocalDateString()} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200 shadow-inner transition-colors" />
+              <h2 className="text-xl md:text-2xl font-bold text-slate-800 dark:text-white">Dashboard FROTA FIXA</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Visualização executiva da operação, utilização e paradas da frota</p>
+            </div>
+          </div>
+          
+          <div className="bg-slate-50 border border-slate-200 dark:bg-slate-800/40 dark:border-slate-700/50 rounded-2xl p-6 mb-8 w-full sticky top-0 z-10 shadow-sm backdrop-blur-md">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Data Inicial</label>
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} max={getLocalDateString()} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-all" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Data Final</label>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} max={getLocalDateString()} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-all" />
+              </div>
+            </div>
+            
+            <div className="flex flex-wrap gap-2 border-t border-slate-200/50 dark:border-slate-700/50 pt-5 mt-5">
+              <button 
+                onClick={() => setUtilActiveTab('overview')} 
+                className={`px-5 py-2.5 text-sm font-bold tracking-wide rounded-xl transition-all ${utilActiveTab === 'overview' ? 'bg-indigo-600 text-white shadow-md scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700'}`}
+              >
+                Resumo Consolidado
+              </button>
+              <button 
+                onClick={() => setUtilActiveTab('details')} 
+                className={`px-5 py-2.5 text-sm font-bold tracking-wide rounded-xl transition-all ${utilActiveTab === 'details' ? 'bg-indigo-600 text-white shadow-md scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700'}`}
+              >
+                Visão Placa a Placa
+              </button>
             </div>
           </div>
         </div>
@@ -618,20 +833,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             {importSuccess && (
                <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded-xl border border-emerald-200/60 dark:border-emerald-800/50 text-sm font-medium flex items-center gap-2.5 shadow-sm">
                  <span className="material-symbols-outlined text-emerald-500">cloud_done</span>
-                 Rotas importadas e salvas com sucesso no banco de dados para o dia {importDate.split('-').reverse().join('/')}!
+                 Rotas importadas e salvas com sucesso no banco de dados lendo a coluna Data do CSV!
                </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Data Referente à Planilha</label>
-                <input type="date" value={importDate} onChange={e => {setImportDate(e.target.value); setImportSuccess(false);}} max={getLocalDateString()} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200" />
-              </div>
-              
-              <div>
-                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Arquivo CSV de Rotas</label>
-                <input type="file" accept=".csv" onChange={handleFileUpload} className="w-full text-sm text-slate-500 file:mr-4 file:py-3.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 focus:outline-none" />
-              </div>
+            <div className="w-full">
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Arquivo CSV de Rotas (com coluna "Data" no formato DD/MM/AAAA)</label>
+              <input type="file" accept=".csv" onChange={handleFileUpload} onClick={() => setImportSuccess(false)} className="w-full text-sm text-slate-500 file:mr-4 file:py-3.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 focus:outline-none" />
             </div>
 
             {csvHeaders.length > 0 && (
@@ -722,8 +930,223 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                Exportar Oferta/Cap.
              </button>
           </div>
+          <div className="flex flex-col md:flex-row gap-4">
+             <button onClick={handleExportOfferVsUtilization} disabled={exportLoading} className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all shadow-lg shadow-blue-600/30 disabled:opacity-50">
+               {exportLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined text-[18px]">list_alt</span>}
+               Cruzamento Específico (SVC e Modal)
+             </button>
+             <button onClick={handleExportOfferVsUtilizationConsolidado} disabled={exportLoading} className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all shadow-lg shadow-indigo-600/30 disabled:opacity-50">
+               {exportLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined text-[18px]">functions</span>}
+               Cruzamento Consolidado (Total por SVC)
+             </button>
+          </div>
         </div>
       )}
+
+      {activeTab === 'director' && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl p-6 md:p-10 animate-fade-in w-full overflow-hidden">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/30">
+              <span className="material-symbols-outlined text-white">monitoring</span>
+            </div>
+            <div>
+              <h2 className="text-xl md:text-2xl font-bold text-slate-800 dark:text-white">Dashboard SPOT</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Visualização executiva de Oferta vs Utilizado do modal de terceiros</p>
+            </div>
+          </div>
+          
+          <div className="bg-slate-50 border border-slate-200 dark:bg-slate-800/40 dark:border-slate-700/50 rounded-2xl p-6 mb-8 w-full sticky top-0 z-10 shadow-sm backdrop-blur-md">
+             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Data Inicial</label>
+                  <input type="date" value={dirStartDate} max={dirEndDate} onChange={e => setDirStartDate(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-amber-500/20 focus:border-amber-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-all" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Data Final</label>
+                  <input type="date" value={dirEndDate} min={dirStartDate} max={getLocalDateString()} onChange={e => setDirEndDate(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-amber-500/20 focus:border-amber-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-all" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Filtro SVC</label>
+                  <div className="relative">
+                    <select value={dirSvcFilter} onChange={e => setDirSvcFilter(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-amber-500/20 focus:border-amber-500 font-medium text-slate-700 dark:text-slate-200 appearance-none shadow-sm transition-all">
+                      <option value="">Todos os SVCs</option>
+                      {/* Extract unique SVCs from the data itself dynamically! */}
+                      {Array.from(new Set(dirData.map(d => d.svc))).sort().map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_content</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Filtro Modal</label>
+                  <div className="relative">
+                    <select value={dirModalFilter} onChange={e => setDirModalFilter(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-amber-500/20 focus:border-amber-500 font-medium text-slate-700 dark:text-slate-200 appearance-none shadow-sm transition-all">
+                      <option value="">Todos os Modais</option>
+                      {INITIAL_CATEGORIES.map(s => (
+                        <option key={s.id} value={s.name.toUpperCase()}>{s.name.toUpperCase()}</option>
+                      ))}
+                    </select>
+                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">minor_crash</span>
+                  </div>
+                </div>
+                
+                <div className="md:col-span-4 mt-2 flex items-center justify-end">
+                  <label className="flex items-center gap-2 cursor-pointer bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 px-4 py-2 rounded-xl transition-all hover:bg-amber-100 dark:hover:bg-amber-900/20">
+                    <input type="checkbox" checked={dirConsolidateModals} onChange={e => setDirConsolidateModals(e.target.checked)} className="rounded text-amber-500 focus:ring-amber-500 w-4 h-4" />
+                    <span className="text-sm font-bold text-amber-700 dark:text-amber-400">Consolidar tabela somando todos os Modais por Polo/SVC</span>
+                  </label>
+                </div>
+             </div>
+          </div>
+
+          {dirLoading ? (
+             <div className="flex flex-col items-center justify-center p-16 w-full">
+               <div className="w-12 h-12 border-4 border-amber-500/30 border-t-amber-500 rounded-full animate-spin"></div>
+               <p className="mt-4 text-slate-500 dark:text-slate-400 font-medium animate-pulse">Cruzando bases de dados...</p>
+             </div>
+          ) : (
+            <>
+              {(() => {
+                const filteredDirData = dirData.filter(d => 
+                   (!dirSvcFilter || d.svc === dirSvcFilter) &&
+                   (!dirModalFilter || d.modal === dirModalFilter)
+                );
+                const dirTotalOffer = filteredDirData.reduce((sum, item) => sum + item.offer, 0);
+                const dirTotalUtilized = filteredDirData.reduce((sum, item) => sum + item.utilized, 0);
+                const dirTotalUtilizedRoutes = filteredDirData.reduce((sum, item) => sum + item.utilizedRoutes, 0);
+                const dirPercentage = dirTotalOffer > 0 ? ((dirTotalUtilized / dirTotalOffer) * 100).toFixed(1) : '0.0';
+                
+                const gapColor = dirTotalUtilized >= dirTotalOffer ? 'text-emerald-500' : 'text-rose-500';
+
+                let displayData = filteredDirData;
+                if (dirConsolidateModals) {
+                   const grouped: Record<string, any> = {};
+                   filteredDirData.forEach(item => {
+                      const key = `${item.date}|${item.svc}`;
+                      if (!grouped[key]) grouped[key] = { date: item.date, svc: item.svc, modal: 'CONSOLIDADO', offer: 0, utilized: 0, utilizedRoutes: 0 };
+                      grouped[key].offer += item.offer;
+                      grouped[key].utilized += item.utilized;
+                      grouped[key].utilizedRoutes += item.utilizedRoutes;
+                   });
+                   displayData = Object.values(grouped);
+                }
+
+                return (
+                  <div>
+                    {/* KPI Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10 w-full">
+                       <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-6 group">
+                          <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-500/10 rounded-full blur-xl group-hover:bg-blue-500/20 transition-all"></div>
+                          <div className="flex items-center gap-4 mb-4 relative">
+                             <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+                               <span className="material-symbols-outlined text-blue-600 dark:text-blue-400">inventory_2</span>
+                             </div>
+                             <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm tracking-wide">OFERTA TOTAL</h3>
+                          </div>
+                          <p className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white relative tracking-tight">{dirTotalOffer.toLocaleString('pt-BR')}</p>
+                          <p className="text-xs text-slate-400 mt-2 font-medium">Capacidade Garantida (SPOT)</p>
+                       </div>
+                       
+                       <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-6 group">
+                          <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl group-hover:bg-indigo-500/20 transition-all"></div>
+                          <div className="flex items-center gap-4 mb-4 relative">
+                             <div className="w-10 h-10 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center">
+                               <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400">route</span>
+                             </div>
+                             <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm tracking-wide">UTILIZADOS (PLACAS)</h3>
+                          </div>
+                          <p className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white relative tracking-tight">{dirTotalUtilized.toLocaleString('pt-BR')}</p>
+                          <p className={`text-xs mt-2 font-bold ${gapColor}`}>Defasagem de {Math.abs(dirTotalUtilized - dirTotalOffer)} carro(s)</p>
+                       </div>
+                       
+                       <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-6 group">
+                          <div className="absolute -right-6 -top-6 w-24 h-24 bg-purple-500/10 rounded-full blur-xl group-hover:bg-purple-500/20 transition-all"></div>
+                          <div className="flex items-center gap-4 mb-4 relative">
+                             <div className="w-10 h-10 rounded-lg bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center">
+                               <span className="material-symbols-outlined text-purple-600 dark:text-purple-400">multiple_stop</span>
+                             </div>
+                             <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm tracking-wide">ROTAS TOTAIS</h3>
+                          </div>
+                          <p className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white relative tracking-tight">{dirTotalUtilizedRoutes.toLocaleString('pt-BR')}</p>
+                          <p className="text-xs mt-2 font-bold text-slate-400 dark:text-slate-500">Viagens realizadas (Ida/Volta)</p>
+                       </div>
+
+                       <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-6 group">
+                          <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-500/10 rounded-full blur-xl group-hover:bg-amber-500/20 transition-all"></div>
+                          <div className="flex items-center gap-4 mb-4 relative">
+                             <div className="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+                               <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">bolt</span>
+                             </div>
+                             <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm tracking-wide">APROVEITAMENTO</h3>
+                          </div>
+                          <div className="flex items-baseline gap-1">
+                             <p className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white relative tracking-tight">{dirPercentage}</p>
+                             <p className="text-2xl font-bold text-slate-400">%</p>
+                          </div>
+                          {/* Progress bar visual */}
+                          <div className="w-full h-2 bg-slate-100 dark:bg-slate-700 rounded-full mt-3 overflow-hidden">
+                             <div className={`h-full ${dirTotalUtilized >= dirTotalOffer ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, Number(dirPercentage))}%` }}></div>
+                          </div>
+                       </div>
+                    </div>
+                    
+                    {/* Detail Table */}
+                    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm w-full">
+                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                         <h3 className="font-bold text-slate-700 dark:text-slate-300">Detalhamento dos Filtros</h3>
+                         <span className="text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3 py-1 rounded-full text-slate-500">{displayData.length} registros</span>
+                       </div>
+                       <div className="overflow-x-auto w-full">
+                         <table className="w-full text-sm text-left">
+                           <thead className="bg-slate-50/50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider">
+                             <tr>
+                               <th className="px-6 py-4">Data</th>
+                               <th className="px-6 py-4">Polo/SVC</th>
+                               <th className="px-6 py-4">Modal</th>
+                               <th className="px-6 py-4 text-center">Oferta</th>
+                               <th className="px-6 py-4 text-center">Utilizado (Placas)</th>
+                               <th className="px-6 py-4 text-center">Rotas Totais</th>
+                               <th className="px-6 py-4 text-center">Performance/Aprov.</th>
+                             </tr>
+                           </thead>
+                           <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                             {displayData.length === 0 ? (
+                               <tr>
+                                 <td colSpan={7} className="px-6 py-8 text-center text-slate-400 font-medium">Nenhum cruzamento encontrado para os filtros aplicados.</td>
+                               </tr>
+                             ) : (
+                               displayData.sort((a,b) => b.date.localeCompare(a.date)).map((item, idx) => {
+                                 const itemPerc = item.offer > 0 ? ((item.utilized / item.offer) * 100).toFixed(0) : 0;
+                                 return (
+                                   <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors">
+                                     <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-600 dark:text-slate-300 text-xs">{item.date.split('-').reverse().join('/')}</td>
+                                     <td className="px-6 py-4 whitespace-nowrap font-bold text-slate-800 dark:text-slate-200">{item.svc}</td>
+                                     <td className="px-6 py-4 whitespace-nowrap text-xs font-semibold text-slate-500 bg-slate-50 dark:bg-slate-900 rounded-md m-2 inline-block px-2 py-1 border border-slate-100 dark:border-slate-700 mt-2.5">{item.modal}</td>
+                                     <td className="px-6 py-4 text-center font-bold text-blue-600 dark:text-blue-400 bg-blue-50/30 dark:bg-blue-500/5">{item.offer}</td>
+                                     <td className="px-6 py-4 text-center font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/30 dark:bg-indigo-500/5">{item.utilized}</td>
+                                     <td className="px-6 py-4 text-center font-bold text-amber-600 dark:text-amber-400 bg-amber-50/30 dark:bg-amber-500/5">{item.utilizedRoutes}</td>
+                                     <td className="px-6 py-4 text-center">
+                                       <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${item.utilized >= item.offer ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400'}`}>
+                                         {itemPerc}%
+                                       </span>
+                                     </td>
+                                   </tr>
+                                 );
+                               })
+                             )}
+                           </tbody>
+                         </table>
+                       </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </>
+          )}
+        </div>
+      )}
+
 
       {loading && activeTab !== 'audit' && activeTab !== 'export' ? (
         <div className="flex flex-col items-center justify-center py-16 space-y-4">
@@ -810,63 +1233,173 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           </section>
         </div>
       ) : activeTab === 'utilization' ? (
-        <div className="space-y-2">
-          <div className="flex justify-between items-center px-1">
-            <span className="text-xs font-medium text-slate-500 md:hidden flex items-center gap-1">
-              <span className="material-symbols-outlined text-[14px]">swipe_left</span>
-              Arraste para ver mais colunas
-            </span>
-          </div>
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] relative">
-            
-            {/* Right gradient hint for overflow on mobile */}
-            <div className="absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent dark:from-slate-900 pointer-events-none md:hidden z-10"></div>
-            
-            <div className="overflow-x-auto pb-2">
-              <table className="w-full text-left text-xs md:text-sm text-slate-600 dark:text-slate-300 min-w-[700px] md:min-w-0">
-                <thead className="bg-slate-50 dark:bg-slate-800/50 text-[10px] md:text-xs uppercase font-bold text-slate-500 dark:text-slate-400">
-                  <tr>
-                    <th className="px-2 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700">Data</th>
-                    <th className="px-2 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-center">T. Placas</th>
-                    <th className="px-2 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-center text-amber-600 dark:text-amber-500">Manutenção</th>
-                    <th className="px-2 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-center text-blue-600 dark:text-blue-500">Disponíveis</th>
-                    <th className="px-2 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-center text-emerald-600 dark:text-emerald-500">Rodaram (Aj.)</th>
-                    <th className="px-2 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-right">% Útil. (Disp.)</th>
-                    <th className="px-2 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-right text-indigo-600 dark:text-indigo-400">% Útil. (Total)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                  {utilizationData.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-5 py-8 text-center text-slate-400 italic">Nenhum dado encontrado no período.</td>
-                    </tr>
-                  ) : (
-                    utilizationData.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                        <td className="px-2 md:px-5 py-3 md:py-4 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
-                          {row.date.split('-').reverse().join('/')}
-                        </td>
-                        <td className="px-2 md:px-5 py-3 md:py-4 text-center font-medium">{row.totalPlates}</td>
-                        <td className="px-2 md:px-5 py-3 md:py-4 text-center text-amber-600 dark:text-amber-500 bg-amber-50/30 dark:bg-amber-900/10 font-bold">{row.maintenance}</td>
-                        <td className="px-2 md:px-5 py-3 md:py-4 text-center text-blue-600 dark:text-blue-400 bg-blue-50/30 dark:bg-blue-900/10 font-bold">{row.available}</td>
-                        <td className="px-2 md:px-5 py-3 md:py-4 text-center text-emerald-600 dark:text-emerald-400 bg-emerald-50/30 dark:bg-emerald-900/10 font-bold">
-                          <span title={`${row.ranAmount} veículos reais`}>
-                            {row.adjustedRan.toFixed(1)}
-                          </span>
-                        </td>
-                        <td className="px-2 md:px-5 py-3 md:py-4 text-right font-extrabold text-slate-800 dark:text-slate-100">
-                          {row.utilizationPerc.toFixed(1)}%
-                        </td>
-                        <td className="px-2 md:px-5 py-3 md:py-4 text-right font-extrabold text-indigo-700 dark:text-indigo-300">
-                          {row.utilizationTotalPerc.toFixed(1)}%
-                        </td>
+        <div className="space-y-6">
+          {utilActiveTab === 'overview' && (
+            <>
+              {(() => {
+                const sumTotalPlates = utilizationData.reduce((acc, row) => acc + row.totalPlates, 0);
+                const sumAvailable = utilizationData.reduce((acc, row) => acc + row.available, 0);
+                const sumRanAmount = utilizationData.reduce((acc, row) => acc + row.ranAmount, 0);
+                
+                const percReal = sumAvailable > 0 ? ((sumRanAmount / sumAvailable) * 100).toFixed(1) : '0.0';
+                
+                const gapColor = sumRanAmount >= sumAvailable ? 'text-emerald-500' : 'text-rose-500';
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 w-full">
+                       <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-6 group">
+                          <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-500/10 rounded-full blur-xl group-hover:bg-blue-500/20 transition-all"></div>
+                          <div className="flex items-center gap-4 mb-4 relative">
+                             <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+                               <span className="material-symbols-outlined text-blue-600 dark:text-blue-400">inventory_2</span>
+                             </div>
+                             <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm tracking-wide">FROTA TOTAL</h3>
+                          </div>
+                          <p className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white relative tracking-tight">{sumTotalPlates.toLocaleString('pt-BR')}</p>
+                          <p className="text-xs text-slate-400 mt-2 font-medium">Equivalente à Frota Total Fixa</p>
+                       </div>
+                       
+                       <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-6 group">
+                          <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl group-hover:bg-indigo-500/20 transition-all"></div>
+                          <div className="flex items-center gap-4 mb-4 relative">
+                             <div className="w-10 h-10 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center">
+                               <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400">task_alt</span>
+                             </div>
+                             <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm tracking-wide">FROTA DISPONÍVEL</h3>
+                          </div>
+                          <p className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white relative tracking-tight">{sumAvailable.toLocaleString('pt-BR')}</p>
+                          <p className="text-xs mt-2 font-bold text-blue-500">Excluindo carros em manutenção</p>
+                       </div>
+                       
+                       <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-6 group">
+                          <div className="absolute -right-6 -top-6 w-24 h-24 bg-purple-500/10 rounded-full blur-xl group-hover:bg-purple-500/20 transition-all"></div>
+                          <div className="flex items-center gap-4 mb-4 relative">
+                             <div className="w-10 h-10 rounded-lg bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center">
+                               <span className="material-symbols-outlined text-purple-600 dark:text-purple-400">directions_car</span>
+                             </div>
+                             <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm tracking-wide">UTILIZADOS (PLACAS)</h3>
+                          </div>
+                          <p className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white relative tracking-tight">{sumRanAmount.toLocaleString('pt-BR')}</p>
+                          <p className={`text-xs mt-2 font-bold ${gapColor}`}>Defasagem de {Math.abs(sumAvailable - sumRanAmount)} carro(s) da capacidade</p>
+                       </div>
+
+                       <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-6 group">
+                          <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-500/10 rounded-full blur-xl group-hover:bg-amber-500/20 transition-all"></div>
+                          <div className="flex items-center gap-4 mb-4 relative">
+                             <div className="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+                               <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">bolt</span>
+                             </div>
+                             <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm tracking-wide">APROVEITAMENTO</h3>
+                          </div>
+                          <div className="flex items-baseline gap-1">
+                             <p className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white relative tracking-tight">{percReal}</p>
+                             <p className="text-2xl font-bold text-slate-400">%</p>
+                          </div>
+                          <div className="w-full h-2 bg-slate-100 dark:bg-slate-700 rounded-full mt-3 overflow-hidden">
+                             <div className={`h-full ${sumRanAmount >= sumAvailable ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, Number(percReal))}%` }}></div>
+                          </div>
+                       </div>
+                  </div>
+                );
+              })()}
+
+              {/* Visão Matemática Pura (Líquida / Bruta) */}
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)]">
+                <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-emerald-500">calculate</span>
+                  <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Resumo Real (Matemática Pura - O que de fato operou)</h3>
+                </div>
+                <div className="overflow-x-auto pb-2">
+                  <table className="w-full text-left text-xs md:text-sm text-slate-600 dark:text-slate-300 min-w-[800px] md:min-w-0">
+                    <thead className="bg-white dark:bg-slate-900 text-[10px] md:text-xs uppercase font-bold text-slate-500 dark:text-slate-400">
+                      <tr>
+                        <th className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700">Data</th>
+                        <th className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-center">Base Total</th>
+                        <th className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-center text-amber-600 dark:text-amber-500">Manutenção</th>
+                        <th className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-center text-blue-600 dark:text-blue-500">Disp. Líquido</th>
+                        <th className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-center text-emerald-600 dark:text-emerald-500">Rodaram (Reais)</th>
+                        <th className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-right">% Bruta (Total)</th>
+                        <th className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-right text-indigo-600 dark:text-indigo-400">% Líquida (Disp.)</th>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                      {utilizationData.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-5 py-8 text-center text-slate-400 italic">Nenhum dado encontrado no período.</td>
+                        </tr>
+                      ) : (
+                        utilizationData.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                            <td className="px-3 md:px-5 py-3 md:py-4 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                              {row.date.split('-').reverse().join('/')}
+                            </td>
+                            <td className="px-3 md:px-5 py-3 md:py-4 text-center font-medium">{row.totalPlates}</td>
+                            <td className="px-3 md:px-5 py-3 md:py-4 text-center text-amber-600 dark:text-amber-500 bg-amber-50/30 dark:bg-amber-900/10 font-bold">{row.maintenance}</td>
+                            <td className="px-3 md:px-5 py-3 md:py-4 text-center text-blue-600 dark:text-blue-400 bg-blue-50/30 dark:bg-blue-900/10 font-bold">{row.available}</td>
+                            <td className="px-3 md:px-5 py-3 md:py-4 text-center text-emerald-600 dark:text-emerald-400 bg-emerald-50/30 dark:bg-emerald-900/10 font-bold">
+                                {row.ranAmount}
+                            </td>
+                            <td className="px-3 md:px-5 py-3 md:py-4 text-right font-extrabold text-slate-800 dark:text-slate-100">
+                              {row.utilizationPureTotalPerc.toFixed(1)}%
+                            </td>
+                            <td className="px-3 md:px-5 py-3 md:py-4 text-right font-extrabold text-indigo-700 dark:text-indigo-300">
+                              {row.utilizationPurePerc.toFixed(1)}%
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Visão Calculada (Ajustada ML) */}
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] mt-6">
+                <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-amber-50/50 dark:bg-amber-900/10 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-amber-500">timeline</span>
+                  <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Resumo Ajustado (Regra Mercado Livre x1.16)</h3>
+                </div>
+                <div className="overflow-x-auto pb-2">
+                  <table className="w-full text-left text-xs md:text-sm text-slate-600 dark:text-slate-300 min-w-[700px] md:min-w-0">
+                    <thead className="bg-white dark:bg-slate-900 text-[10px] md:text-xs uppercase font-bold text-slate-500 dark:text-slate-400">
+                      <tr>
+                        <th className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700">Data</th>
+                        <th className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-center">Base Total</th>
+                        <th className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-center text-blue-600 dark:text-blue-500">Disp. Líquido</th>
+                        <th className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-center text-emerald-600 dark:text-emerald-500">Rodaram (Ajustado)</th>
+                        <th className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-right">% Bruta Ajustada</th>
+                        <th className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-200 dark:border-slate-700 text-right text-indigo-600 dark:text-indigo-400">% Líquida Ajustada</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                      {utilizationData.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-5 py-8 text-center text-slate-400 italic">Nenhum dado encontrado no período.</td>
+                        </tr>
+                      ) : (
+                        utilizationData.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                            <td className="px-3 md:px-5 py-3 md:py-4 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                              {row.date.split('-').reverse().join('/')}
+                            </td>
+                            <td className="px-3 md:px-5 py-3 md:py-4 text-center font-medium">{row.totalPlates}</td>
+                            <td className="px-3 md:px-5 py-3 md:py-4 text-center text-blue-600 dark:text-blue-400 bg-blue-50/30 dark:bg-blue-900/10 font-bold">{row.available}</td>
+                            <td className="px-3 md:px-5 py-3 md:py-4 text-center text-emerald-600 dark:text-emerald-400 bg-emerald-50/30 dark:bg-emerald-900/10 font-bold" title={`${row.ranAmount} veículos reais`}>
+                                {row.adjustedRan.toFixed(1)}
+                            </td>
+                            <td className="px-3 md:px-5 py-3 md:py-4 text-right font-extrabold text-slate-800 dark:text-slate-100">
+                              {row.utilizationTotalPerc.toFixed(1)}%
+                            </td>
+                            <td className="px-3 md:px-5 py-3 md:py-4 text-right font-extrabold text-indigo-700 dark:text-indigo-300">
+                              {row.utilizationPerc.toFixed(1)}%
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
           {/* Additional Analytics Section */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
@@ -991,7 +1524,149 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               </div>
             </div>
           )}
-          
+            </>
+          )}
+
+
+          {/* DETALHAMENTO PLACA A PLACA */}
+          {utilActiveTab === 'details' && detailedUtilizationData.length > 0 && (() => {
+             const filteredDetails = detailedUtilizationData.filter(d => 
+                (!detSvcFilter || d.svc === detSvcFilter) &&
+                (detStatusFilter === 'all' || (detStatusFilter === 'ran' ? d.didRun : !d.didRun))
+             );
+             
+             const handleExportDetailedPlate = () => {
+                const rows = [["Data", "SVC", "Placa", "Carregou (1=Sim/0=Nao)", "Justificativa"]];
+                filteredDetails.forEach(d => {
+                   rows.push([d.date.split('-').reverse().join('/'), d.svc, d.plate, d.didRun ? '1' : '0', d.reason]);
+                });
+                const csvContent = rows.map(r => r.join(";")).join("\n");
+                const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.setAttribute("download", `Detalhe_Placas_${startDate}_a_${endDate}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+             };
+
+             return (
+               <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] p-6 mt-8">
+                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
+                   <div>
+                     <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                       <span className="material-symbols-outlined text-blue-500">app_registration</span>
+                       Visão Placa a Placa (Mercado Livre)
+                     </h3>
+                     <p className="text-xs text-slate-500 mt-1">Validação de carregamento e justificativas baseada na rota do dia.</p>
+                   </div>
+                   <button onClick={handleExportDetailedPlate} className="py-2.5 px-5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 text-sm shadow-md transition-all active:scale-95">
+                     <span className="material-symbols-outlined text-[18px]">download</span>
+                     Exportar Formato CSV (31.csv)
+                   </button>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Filtrar por SVC</label>
+                      <div className="relative">
+                        <select value={detSvcFilter} onChange={e => setDetSvcFilter(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-blue-500 shadow-sm appearance-none">
+                          <option value="">Todos os SVCs</option>
+                          {Array.from(new Set(detailedUtilizationData.map(d => d.svc))).sort().map(s => (
+                             <option key={s as string} value={s as string}>{s as string}</option>
+                          ))}
+                        </select>
+                        <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_content</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Status de Carregamento</label>
+                      <div className="flex gap-2">
+                        <button onClick={() => setDetStatusFilter('all')} className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${detStatusFilter === 'all' ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Todos</button>
+                        <button onClick={() => setDetStatusFilter('ran')} className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${detStatusFilter === 'ran' ? 'bg-emerald-500 text-white shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Carregou (1)</button>
+                        <button onClick={() => setDetStatusFilter('idle')} className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${detStatusFilter === 'idle' ? 'bg-rose-500 text-white shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Parado (0)</button>
+                      </div>
+                    </div>
+                 </div>
+
+                 <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-xl max-h-[400px] overflow-y-auto custom-scrollbar">
+                   <table className="w-full text-sm text-left relative">
+                     <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0 z-10 shadow-sm">
+                       <tr>
+                         <th className="px-5 py-4 w-1/6">Data</th>
+                         <th className="px-5 py-4 w-1/6">SVC</th>
+                         <th className="px-5 py-4 w-1/6">Placa</th>
+                         <th className="px-5 py-4 text-center w-1/6">Status (Carregou)</th>
+                         <th className="px-5 py-4 w-2/6">Justificativa Reportada</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                        {filteredDetails.length === 0 ? (
+                           <tr>
+                              <td colSpan={5} className="px-5 py-12 text-center text-slate-400 font-medium">Nenhum registro encontrado para os filtros aplicados.</td>
+                           </tr>
+                        ) : (
+                           filteredDetails.map((item, idx) => (
+                              <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors">
+                                 <td className="px-5 py-3.5 font-medium text-slate-600 dark:text-slate-300">{item.date.split('-').reverse().join('/')}</td>
+                                 <td className="px-5 py-3.5 font-bold text-slate-800 dark:text-slate-200">{item.svc}</td>
+                                 <td className="px-5 py-3.5"><span className="font-mono font-bold bg-slate-100 dark:bg-slate-900 rounded px-2.5 py-1 border border-slate-200 dark:border-slate-800">{item.plate}</span></td>
+                                 <td className="px-5 py-3.5 text-center">
+                                     {item.didRun ? (
+                                        <span className="px-2.5 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 shadow-sm border border-emerald-200 dark:border-emerald-800/50">
+                                            <span className="material-symbols-outlined text-[14px]">check_circle</span> Sim (1)
+                                        </span>
+                                     ) : (
+                                        <span className="px-2.5 py-1 bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 shadow-sm border border-rose-200 dark:border-rose-800/50">
+                                            <span className="material-symbols-outlined text-[14px]">cancel</span> Não (0)
+                                        </span>
+                                     )}
+                                 </td>
+                                 <td className="px-5 py-3.5">
+                                    {editingPlateKey === `${item.date}|${item.plate}` ? (
+                                      <div className="flex items-center gap-2">
+                                        <input 
+                                          type="text" 
+                                          value={editingPlateJust}
+                                          onChange={(e) => setEditingPlateJust(e.target.value)}
+                                          className="flex-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs p-1.5 focus:ring-2 focus:ring-blue-500 shadow-inner"
+                                          onKeyDown={(e) => {
+                                            if(e.key === 'Enter') handleSaveJustification(item.date, item.plate, item.reportId, item.fullJustifications);
+                                            if(e.key === 'Escape') setEditingPlateKey(null);
+                                          }}
+                                          autoFocus
+                                          disabled={isSavingJust}
+                                        />
+                                        <button disabled={isSavingJust} onClick={() => handleSaveJustification(item.date, item.plate, item.reportId, item.fullJustifications)} className="p-1.5 flex items-center justify-center bg-emerald-500 text-white rounded hover:bg-emerald-600 shadow-sm disabled:opacity-50"><span className="material-symbols-outlined text-[16px]">check</span></button>
+                                        <button disabled={isSavingJust} onClick={() => setEditingPlateKey(null)} className="p-1.5 flex items-center justify-center bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300 rounded hover:bg-slate-300 dark:hover:bg-slate-600 shadow-sm disabled:opacity-50"><span className="material-symbols-outlined text-[16px]">close</span></button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center justify-between group">
+                                        <span className={`text-xs font-semibold ${!item.didRun && item.reason === 'Sem justificativa preenchida' ? 'text-rose-500 dark:text-rose-400' : 'text-slate-600 dark:text-slate-400'}`}>
+                                           {item.reason}
+                                        </span>
+                                        {item.reportId && (
+                                           <button 
+                                              onClick={() => { setEditingPlateKey(`${item.date}|${item.plate}`); setEditingPlateJust(item.reason); }} 
+                                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-blue-500 transition-opacity ml-2 shrink-0 bg-white dark:bg-slate-800 rounded shadow-sm border border-slate-200 dark:border-slate-700 flex items-center justify-center"
+                                              title="Editar Justificativa"
+                                           >
+                                             <span className="material-symbols-outlined text-[14px]">edit</span>
+                                           </button>
+                                        )}
+                                      </div>
+                                    )}
+                                 </td>
+                              </tr>
+                           ))
+                        )}
+                     </tbody>
+                   </table>
+                 </div>
+               </div>
+             );
+          })()}
         </div>
       ) : activeTab === 'audit' && auditResults && auditResults.dbRouteCount > 0 ? (
         <div className="space-y-6">

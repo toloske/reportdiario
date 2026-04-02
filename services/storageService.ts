@@ -131,11 +131,24 @@ export const getReportsByDateRange = async (startDate: string, endDate: string) 
   return data || [];
 };
 
-export const saveDailyRoutes = async (payload: { route_id: string, date: string, plate: string, driver_id?: string, vehicle_type?: string }[]) => {
-  // We use upsert on route_id constraint to ignore duplicates safely
+export const updateReportJustifications = async (reportId: string, newJustifications: string) => {
+  const { error } = await supabase
+    .from('daily_reports')
+    .update({ justifications: newJustifications })
+    .eq('id', reportId);
+
+  if (error) {
+    console.error('Error updating report justifications:', error);
+    throw error;
+  }
+};
+
+
+export const saveDailyRoutes = async (payload: any[]) => {
+  // Upsert com update: Atualiza a linha se route_id já existir
   const { error } = await supabase
     .from('daily_routes')
-    .upsert(payload, { onConflict: 'route_id', ignoreDuplicates: true });
+    .upsert(payload, { onConflict: 'route_id' });
 
   if (error) {
     console.error('Error saving daily routes:', error);
@@ -152,6 +165,21 @@ export const getDailyRoutesByDate = async (dateStr: string) => {
 
   if (error) {
     console.error('Error fetching daily routes:', error);
+    return [];
+  }
+  return data || [];
+};
+
+export const getDailyRoutesByDateRange = async (startDate: string, endDate: string) => {
+  const { data, error } = await supabase
+    .from('daily_routes')
+    .select('*')
+    .gte('date', startDate)
+    .lte('date', endDate)
+    .order('date', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching daily routes by range:', error);
     return [];
   }
   return data || [];
