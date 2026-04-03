@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import html2canvas from 'html2canvas';
 import { supabase } from '../services/supabaseClient';
 import { getReportsByDate, getReportsByDateRange, saveDailyRoutes, getDailyRoutesByDate, getDailyRoutesByDateRange, updateReportJustifications, updateReportOffer } from '../services/storageService';
 import { dataService, SVC, Vehicle } from '../services/dataService';
@@ -23,7 +24,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [fixedVehicles, setFixedVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'|'export'|'director'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'|'export'|'director'|'summary'>('daily');
   const [startDate, setStartDate] = useState<string>(
     getLocalDateString(new Date(new Date().setDate(new Date().getDate() - 7)))
   );
@@ -77,6 +78,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [editingOfferKey, setEditingOfferKey] = useState<string | null>(null);
   const [editingOfferValue, setEditingOfferValue] = useState<number | ''>('');
   const [isSavingOffer, setIsSavingOffer] = useState(false);
+
+  const [summaryData, setSummaryData] = useState<any[]>([]);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   const handleSaveJustification = async (date: string, plate: string, reportId: string, fullJustifications: string) => {
     if (!reportId) return;
@@ -399,6 +403,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             });
         });
 
+        // Use same export logic context ...
+        
         Object.keys(utilizationGroups).forEach(key => {
             const [date, svc, vehicleType] = key.split('|');
             const combinedKey = `${date}|${svc}`;
@@ -431,6 +437,78 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     };
     fetchDirData();
   }, [dirStartDate, dirEndDate, activeTab]);
+
+  useEffect(() => {
+    const loadSummary = async () => {
+      if (activeTab === 'summary' && svcs.length > 0) {
+        setSummaryLoading(true);
+        const fetchedReports = await getReportsByDate(selectedDate);
+        const fetchedRoutes = await getDailyRoutesByDate(selectedDate);
+        
+        const validSvcIds = svcs
+          .filter(svc => mercadoLivreSvcs.includes(svc.id) && svc.name !== 'FIRST MILE')
+          .map(svc => svc.id);
+
+        const validFixedPlates = fixedVehicles
+          .filter(v => validSvcIds.includes(v.svc_id))
+          .map(v => v.plate);
+
+        const summaryMap: Record<string, any> = {};
+
+        validSvcIds.forEach(svc => {
+           summaryMap[svc] = {
+             svc,
+             offerSpot: 0,
+             ranSpot: 0,
+             fixedTotal: fixedVehicles.filter(v => v.svc_id === svc).length,
+             fixedRan: 0,
+             fixedIdle: 0
+           };
+        });
+
+        fetchedReports.forEach(rep => {
+           if (validSvcIds.includes(rep.svc_id)) {
+               INITIAL_CATEGORIES.forEach(cat => {
+                   const key = `offer_${cat.id.replace(/-/g, '_')}`;
+                   summaryMap[rep.svc_id].offerSpot += (rep[key] || 0);
+               });
+           }
+        });
+
+        const routesBySvcAndPlate: Record<string, Set<string>> = {};
+        fetchedRoutes.forEach(r => {
+            const svc = r.xpt?.toUpperCase() === 'ESP8' ? 'XPT' : (r.svc_id || '');
+            if (!routesBySvcAndPlate[svc]) routesBySvcAndPlate[svc] = new Set();
+            routesBySvcAndPlate[svc].add(r.plate);
+        });
+
+        validSvcIds.forEach(svc => {
+           const platesInSvc = routesBySvcAndPlate[svc] || new Set();
+           let fixedRanCount = 0;
+           let spotRanCount = 0;
+           
+           const fixedPlatesForThisSvc = fixedVehicles.filter(v => v.svc_id === svc).map(v => v.plate);
+
+           platesInSvc.forEach(plate => {
+               if (fixedPlatesForThisSvc.includes(plate)) {
+                   fixedRanCount++;
+               } else {
+                   spotRanCount++;
+               }
+           });
+
+           summaryMap[svc].fixedRan = fixedRanCount;
+           summaryMap[svc].fixedIdle = summaryMap[svc].fixedTotal - fixedRanCount;
+           summaryMap[svc].ranSpot = spotRanCount;
+        });
+
+        const arr = Object.values(summaryMap).sort((a,b) => a.svc.localeCompare(b.svc));
+        setSummaryData(arr);
+        setSummaryLoading(false);
+      }
+    };
+    loadSummary();
+  }, [selectedDate, activeTab, svcs, mercadoLivreSvcs, fixedVehicles]);
 
   const handleExportCSV = () => {
     if (reports.length === 0) return;
@@ -753,7 +831,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
            { id: 'utilization', label: 'Utilização' },
            { id: 'audit', label: 'Subir Rotas' },
            { id: 'export', label: 'Exportar' },
-           { id: 'director', label: 'Ofertas SPOT' }
+           { id: 'director', label: 'Ofertas SPOT' },
+           { id: 'summary', label: 'Resumo Diário' }
         ].map((tab) => (
           <button 
             key={tab.id}
@@ -800,6 +879,151 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               Exportar Oferta/Cap.
             </button>
           </div>
+        </div>
+      )}
+      {activeTab === 'summary' && (
+        <div className="bg-slate-100 dark:bg-slate-900 rounded-2xl p-6 shadow-md border border-slate-200 dark:border-slate-800 space-y-6 animate-fade-in w-full overflow-x-auto">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-4">
+             <div className="flex items-center gap-3">
+                <input
+                  type="date"
+                  value={selectedDate}
+                  max={getLocalDateString()}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="rounded-xl border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2.5 text-sm font-bold text-slate-700 dark:text-slate-200 shadow-sm"
+                />
+                <div>
+                   <h2 className="text-xl font-bold text-slate-800 dark:text-white">Resumo Executivo Diário</h2>
+                   <p className="text-xs text-slate-500">Métricas consolidadas por SVC (Fixa vs Spot)</p>
+                </div>
+             </div>
+             <button 
+                onClick={async () => {
+                   const el = document.getElementById('export-summary-container');
+                   if (!el) return;
+                   
+                   const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#f8fafc' });
+                   const imgData = canvas.toDataURL('image/png');
+                   const link = document.createElement('a');
+                   link.href = imgData;
+                   link.download = `Resumo_Consolidado_${selectedDate}.png`;
+                   link.click();
+                }}
+                disabled={summaryLoading}
+                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+             >
+                <span className="material-symbols-outlined">image</span>
+                Salvar como Imagem
+             </button>
+          </div>
+
+          {summaryLoading ? (
+             <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-slate-300 border-t-indigo-600 rounded-full animate-spin"></div></div>
+          ) : (
+            <div id="export-summary-container" className="bg-slate-50 p-8 rounded-2xl border border-slate-200 min-w-[800px] shadow-sm">
+              <div className="text-center mb-8 border-b border-slate-200 pb-6">
+                 <h2 className="text-2xl font-black text-slate-800 uppercase tracking-widest">Resumo Operacional</h2>
+                 <p className="text-sm font-bold text-slate-500 mt-1">Data de Referência: {selectedDate.split('-').reverse().join('/')}</p>
+                 <div className="flex justify-center flex-wrap gap-6 mt-6">
+                    <div className="px-6 py-3 bg-blue-100 text-blue-800 rounded-xl border border-blue-200 shadow-sm">
+                       <span className="text-xs font-bold block uppercase tracking-wider mb-1">Total Ofertas (SPOT)</span>
+                       <span className="text-3xl font-black">{summaryData.reduce((acc, c) => acc + c.offerSpot, 0)}</span>
+                    </div>
+                    <div className="px-6 py-3 bg-emerald-100 text-emerald-800 rounded-xl border border-emerald-200 shadow-sm">
+                       <span className="text-xs font-bold block uppercase tracking-wider mb-1">Total Rodou (SPOT)</span>
+                       <span className="text-3xl font-black">{summaryData.reduce((acc, c) => acc + c.ranSpot, 0)}</span>
+                    </div>
+                    <div className="px-6 py-3 bg-indigo-100 text-indigo-800 rounded-xl border border-indigo-200 shadow-sm">
+                       <span className="text-xs font-bold block uppercase tracking-wider mb-1">Frota Fixa Cadastrada</span>
+                       <span className="text-3xl font-black">{summaryData.reduce((acc, c) => acc + c.fixedTotal, 0)}</span>
+                    </div>
+                 </div>
+              </div>
+              
+              <table className="w-full text-center text-sm whitespace-nowrap bg-white rounded-xl overflow-hidden shadow-sm border border-slate-300">
+                 <thead className="bg-slate-800 text-slate-100 uppercase text-xs font-bold tracking-wider">
+                    <tr>
+                       <th className="px-5 py-4 text-center">SVC</th>
+                       <th className="px-5 py-4 text-center border-l border-slate-700 bg-slate-700/50" colSpan={3}>Ofertas (SPOT)</th>
+                       <th className="px-5 py-4 text-center border-l-4 border-slate-400 bg-indigo-900/40" colSpan={4}>Frota Fixa (APP)</th>
+                    </tr>
+                    <tr className="bg-slate-700">
+                       <th className="px-5 py-3 text-center font-medium">Nome</th>
+                       
+                       <th className="px-5 py-3 text-center border-l border-slate-600">Ofertados</th>
+                       <th className="px-5 py-3 text-center border-l border-slate-600 text-emerald-300"><span className="flex items-center justify-center gap-1.5"><span className="material-symbols-outlined text-[16px]">check_circle</span> Rodaram</span></th>
+                       <th className="px-5 py-3 text-center border-l border-slate-600 text-amber-300">Aproveitamento</th>
+                       
+                       <th className="px-5 py-3 text-center border-l-4 border-slate-400 bg-slate-800/80 text-indigo-200">Total Fixo</th>
+                       <th className="px-5 py-3 text-center border-l border-slate-600 text-emerald-300 bg-slate-800/80"><span className="flex items-center justify-center gap-1.5"><span className="material-symbols-outlined text-[16px]">check_circle</span> Rodaram</span></th>
+                       <th className="px-5 py-3 text-center border-l border-slate-600 text-rose-300 bg-slate-800/80">Parados</th>
+                       <th className="px-5 py-3 text-center border-l border-slate-600 text-amber-300 bg-slate-800/80">Utilização</th>
+                    </tr>
+                 </thead>
+                 <tbody className="divide-y divide-slate-200">
+                    {summaryData.map((row, i) => {
+                       const spotDiff = row.offerSpot - row.ranSpot;
+                       const spotAprov = row.offerSpot > 0 ? ((row.ranSpot / row.offerSpot) * 100).toFixed(1) : '0.0';
+                       const fixaUtil = row.fixedTotal > 0 ? ((row.fixedRan / row.fixedTotal) * 100).toFixed(1) : '0.0';
+                       
+                       return (
+                       <tr key={row.svc} className={i % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/70 hover:bg-slate-50'}>
+                          <td className="px-5 py-3.5 text-center font-bold text-slate-800">{row.svc}</td>
+                          
+                          <td className="px-5 py-3.5 text-center font-bold text-slate-600 border-l border-slate-100/50 bg-slate-50">{row.offerSpot}</td>
+                          <td className="px-5 py-3.5 text-center font-black text-emerald-600 border-l border-slate-100/50 bg-emerald-50/20">
+                             {row.ranSpot} 
+                             {spotDiff > 0 && <span className="text-[11px] text-rose-500 font-bold ml-1.5 align-text-top">(-{spotDiff})</span>}
+                             {spotDiff < 0 && <span className="text-[11px] text-blue-500 font-bold ml-1.5 align-text-top">(+{Math.abs(spotDiff)})</span>}
+                          </td>
+                          <td className="px-5 py-3.5 text-center font-bold text-amber-600 border-l border-slate-100/50 bg-amber-50/20">{spotAprov}%</td>
+                          
+                          <td className="px-5 py-3.5 text-center font-medium border-l-4 border-slate-300 bg-indigo-50/10">{row.fixedTotal}</td>
+                          <td className="px-5 py-3.5 text-center font-black text-emerald-600 border-l border-slate-100 bg-emerald-50/30">{row.fixedRan}</td>
+                          <td className="px-5 py-3.5 text-center font-black text-rose-500 border-l border-slate-100 bg-rose-50/30">{row.fixedIdle}</td>
+                          <td className="px-5 py-3.5 text-center font-bold text-amber-600 border-l border-slate-100 bg-amber-50/30">{fixaUtil}%</td>
+                       </tr>
+                    )})}
+                 </tbody>
+                 <tfoot className="bg-slate-800 text-white shadow-inner">
+                    {(() => {
+                       const totalOfferSpot = summaryData.reduce((acc, c) => acc + c.offerSpot, 0);
+                       const totalRanSpot = summaryData.reduce((acc, c) => acc + c.ranSpot, 0);
+                       const totalSpotDiff = totalOfferSpot - totalRanSpot;
+                       const totalSpotAprov = totalOfferSpot > 0 ? ((totalRanSpot / totalOfferSpot) * 100).toFixed(1) : '0.0';
+                       
+                       const totalFixed = summaryData.reduce((acc, c) => acc + c.fixedTotal, 0);
+                       const totalFixedRan = summaryData.reduce((acc, c) => acc + c.fixedRan, 0);
+                       const totalFixedIdle = summaryData.reduce((acc, c) => acc + c.fixedIdle, 0);
+                       const totalFixaUtil = totalFixed > 0 ? ((totalFixedRan / totalFixed) * 100).toFixed(1) : '0.0';
+                       
+                       return (
+                          <tr>
+                             <td className="px-5 py-4 text-center font-black uppercase tracking-wider text-slate-300">TOTAL GERAL</td>
+                             
+                             <td className="px-5 py-4 text-center font-black border-l border-slate-700/50 bg-slate-700/30">{totalOfferSpot}</td>
+                             <td className="px-5 py-4 text-center font-black text-emerald-400 border-l border-slate-700/50 bg-slate-700/30">
+                                {totalRanSpot}
+                                {totalSpotDiff > 0 && <span className="text-[11px] text-rose-400 font-bold ml-1.5 align-text-top">(-{totalSpotDiff})</span>}
+                                {totalSpotDiff < 0 && <span className="text-[11px] text-blue-400 font-bold ml-1.5 align-text-top">(+{Math.abs(totalSpotDiff)})</span>}
+                             </td>
+                             <td className="px-5 py-4 text-center font-black text-amber-400 border-l border-slate-700/50 bg-slate-700/30">{totalSpotAprov}%</td>
+
+                             <td className="px-5 py-4 text-center font-black border-l-4 border-slate-600 bg-slate-700/50">{totalFixed}</td>
+                             <td className="px-5 py-4 text-center font-black text-emerald-400 border-l border-slate-700/50 bg-slate-700/50">{totalFixedRan}</td>
+                             <td className="px-5 py-4 text-center font-black text-rose-400 border-l border-slate-700/50 bg-slate-700/50">{totalFixedIdle}</td>
+                             <td className="px-5 py-4 text-center font-black text-amber-400 border-l border-slate-700/50 bg-slate-700/50">{totalFixaUtil}%</td>
+                          </tr>
+                       );
+                    })()}
+                 </tfoot>
+              </table>
+              <div className="mt-6 flex items-center gap-2 justify-end opacity-40 text-slate-700">
+                 <span className="material-symbols-outlined text-[14px]">info</span>
+                 <span className="text-[11px] font-bold uppercase tracking-widest leading-none">Exportação Gerada - Logística ML</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
