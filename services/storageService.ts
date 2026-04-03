@@ -143,6 +143,18 @@ export const updateReportJustifications = async (reportId: string, newJustificat
   }
 };
 
+export const updateReportOffer = async (date: string, svc_id: string, modalKey: string, newOffer: number) => {
+  const { error } = await supabase
+    .from('daily_reports')
+    .update({ [modalKey]: newOffer })
+    .match({ date, svc_id });
+
+  if (error) {
+    console.error('Error updating report offer:', error);
+    throw error;
+  }
+};
+
 
 export const saveDailyRoutes = async (payload: any[]) => {
   // Upsert com update: Atualiza a linha se route_id já existir

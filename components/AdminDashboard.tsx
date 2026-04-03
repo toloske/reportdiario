@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { getReportsByDate, getReportsByDateRange, saveDailyRoutes, getDailyRoutesByDate, getDailyRoutesByDateRange, updateReportJustifications } from '../services/storageService';
+import { getReportsByDate, getReportsByDateRange, saveDailyRoutes, getDailyRoutesByDate, getDailyRoutesByDateRange, updateReportJustifications, updateReportOffer } from '../services/storageService';
 import { dataService, SVC, Vehicle } from '../services/dataService';
-import { INITIAL_CATEGORIES } from '../constants';
+import { INITIAL_CATEGORIES, JUSTIFICATION_OPTIONS } from '../constants';
 import Papa from 'papaparse';
 
 interface AdminDashboardProps {
@@ -67,10 +67,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [detailedUtilizationData, setDetailedUtilizationData] = useState<any[]>([]);
   const [detSvcFilter, setDetSvcFilter] = useState('');
   const [detStatusFilter, setDetStatusFilter] = useState<'all'|'ran'|'idle'>('all');
+  const [detPlateFilter, setDetPlateFilter] = useState('');
   const [utilActiveTab, setUtilActiveTab] = useState<'overview'|'details'>('overview');
   const [editingPlateKey, setEditingPlateKey] = useState<string | null>(null);
   const [editingPlateJust, setEditingPlateJust] = useState('');
   const [isSavingJust, setIsSavingJust] = useState(false);
+  
+  const [editingOfferKey, setEditingOfferKey] = useState<string | null>(null);
+  const [editingOfferValue, setEditingOfferValue] = useState<number | ''>('');
+  const [isSavingOffer, setIsSavingOffer] = useState(false);
 
   const handleSaveJustification = async (date: string, plate: string, reportId: string, fullJustifications: string) => {
     if (!reportId) return;
@@ -105,6 +110,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       alert("Erro ao salvar a justificativa.");
     } finally {
       setIsSavingJust(false);
+    }
+  };
+
+  const handleSaveOffer = async (date: string, svc: string, modal: string) => {
+    if (editingOfferValue === '' || typeof editingOfferValue !== 'number') return;
+    setIsSavingOffer(true);
+    try {
+      const cat = INITIAL_CATEGORIES.find(c => c.name.toUpperCase() === modal);
+      if (!cat) throw new Error("Categoria não encontrada.");
+      const columnKey = `offer_${cat.id.replace(/-/g, '_')}`;
+
+      await updateReportOffer(date, svc, columnKey, editingOfferValue);
+      setEditingOfferKey(null);
+
+      setDirData(prev => prev.map(d => {
+         if (d.date === date && d.svc === svc && d.modal === modal) {
+            return { ...d, offer: editingOfferValue };
+         }
+         return d;
+      }));
+    } catch (e) {
+      alert("Erro ao salvar a oferta.");
+    } finally {
+      setIsSavingOffer(false);
     }
   };
 
@@ -1123,7 +1152,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                      <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-600 dark:text-slate-300 text-xs">{item.date.split('-').reverse().join('/')}</td>
                                      <td className="px-6 py-4 whitespace-nowrap font-bold text-slate-800 dark:text-slate-200">{item.svc}</td>
                                      <td className="px-6 py-4 whitespace-nowrap text-xs font-semibold text-slate-500 bg-slate-50 dark:bg-slate-900 rounded-md m-2 inline-block px-2 py-1 border border-slate-100 dark:border-slate-700 mt-2.5">{item.modal}</td>
-                                     <td className="px-6 py-4 text-center font-bold text-blue-600 dark:text-blue-400 bg-blue-50/30 dark:bg-blue-500/5">{item.offer}</td>
+                                     <td className="px-6 py-4 text-center bg-blue-50/30 dark:bg-blue-500/5">
+                                        {editingOfferKey === `${item.date}|${item.svc}|${item.modal}` ? (
+                                           <div className="flex items-center justify-center gap-1">
+                                             <input 
+                                               type="number" 
+                                               min="0"
+                                               value={editingOfferValue}
+                                               onChange={(e) => setEditingOfferValue(e.target.value === '' ? '' : Number(e.target.value))}
+                                               className="w-16 rounded border border-blue-300 dark:border-blue-600 bg-white dark:bg-slate-800 text-xs p-1 text-center font-bold focus:ring-2 focus:ring-blue-500"
+                                               autoFocus
+                                               disabled={isSavingOffer}
+                                               onKeyDown={(e) => {
+                                                  if(e.key === 'Enter') handleSaveOffer(item.date, item.svc, item.modal);
+                                                  if(e.key === 'Escape') setEditingOfferKey(null);
+                                               }}
+                                             />
+                                             <button disabled={isSavingOffer} onClick={() => handleSaveOffer(item.date, item.svc, item.modal)} className="text-emerald-500 hover:text-emerald-600 disabled:opacity-50 flex items-center justify-center p-1"><span className="material-symbols-outlined text-[16px]">check</span></button>
+                                             <button disabled={isSavingOffer} onClick={() => setEditingOfferKey(null)} className="text-slate-400 hover:text-slate-600 disabled:opacity-50 flex items-center justify-center p-1"><span className="material-symbols-outlined text-[16px]">close</span></button>
+                                           </div>
+                                        ) : (
+                                           <div className="flex items-center justify-center gap-2 group cursor-pointer" onClick={() => { if(!dirConsolidateModals) { setEditingOfferKey(`${item.date}|${item.svc}|${item.modal}`); setEditingOfferValue(item.offer); } }} title={dirConsolidateModals ? "Desative a consolidação para editar" : "Clique para editar"}>
+                                              <span className="font-bold text-blue-600 dark:text-blue-400">{item.offer}</span>
+                                              {!dirConsolidateModals && <span className="material-symbols-outlined text-[12px] text-blue-300 dark:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">edit</span>}
+                                           </div>
+                                        )}
+                                     </td>
                                      <td className="px-6 py-4 text-center font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/30 dark:bg-indigo-500/5">{item.utilized}</td>
                                      <td className="px-6 py-4 text-center font-bold text-amber-600 dark:text-amber-400 bg-amber-50/30 dark:bg-amber-500/5">{item.utilizedRoutes}</td>
                                      <td className="px-6 py-4 text-center">
@@ -1532,6 +1586,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           {utilActiveTab === 'details' && detailedUtilizationData.length > 0 && (() => {
              const filteredDetails = detailedUtilizationData.filter(d => 
                 (!detSvcFilter || d.svc === detSvcFilter) &&
+                (!detPlateFilter || d.plate.toLowerCase().includes(detPlateFilter.toLowerCase())) &&
                 (detStatusFilter === 'all' || (detStatusFilter === 'ran' ? d.didRun : !d.didRun))
              );
              
@@ -1567,7 +1622,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                    </button>
                  </div>
 
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Filtrar por Placa</label>
+                      <input 
+                        type="text" 
+                        value={detPlateFilter} 
+                        onChange={(e) => setDetPlateFilter(e.target.value)} 
+                        placeholder="Ex: ABC1D23" 
+                        className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-blue-500 shadow-sm appearance-none outline-none uppercase" 
+                      />
+                    </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Filtrar por SVC</label>
                       <div className="relative">
@@ -1608,7 +1673,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                            </tr>
                         ) : (
                            filteredDetails.map((item, idx) => (
-                              <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors">
+                              <tr key={idx} className={`transition-colors ${(!item.didRun && item.reason && item.reason.toUpperCase().includes('RODOU')) ? 'bg-red-100 hover:bg-red-200 dark:bg-rose-900/30 dark:hover:bg-rose-900/50' : 'hover:bg-slate-50 dark:hover:bg-slate-800/80'}`}>
                                  <td className="px-5 py-3.5 font-medium text-slate-600 dark:text-slate-300">{item.date.split('-').reverse().join('/')}</td>
                                  <td className="px-5 py-3.5 font-bold text-slate-800 dark:text-slate-200">{item.svc}</td>
                                  <td className="px-5 py-3.5"><span className="font-mono font-bold bg-slate-100 dark:bg-slate-900 rounded px-2.5 py-1 border border-slate-200 dark:border-slate-800">{item.plate}</span></td>
@@ -1626,18 +1691,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                  <td className="px-5 py-3.5">
                                     {editingPlateKey === `${item.date}|${item.plate}` ? (
                                       <div className="flex items-center gap-2">
-                                        <input 
-                                          type="text" 
+                                        <select 
                                           value={editingPlateJust}
                                           onChange={(e) => setEditingPlateJust(e.target.value)}
                                           className="flex-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs p-1.5 focus:ring-2 focus:ring-blue-500 shadow-inner"
                                           onKeyDown={(e) => {
-                                            if(e.key === 'Enter') handleSaveJustification(item.date, item.plate, item.reportId, item.fullJustifications);
                                             if(e.key === 'Escape') setEditingPlateKey(null);
                                           }}
                                           autoFocus
                                           disabled={isSavingJust}
-                                        />
+                                        >
+                                           <option value="">Selecione o motivo...</option>
+                                           {editingPlateJust && !JUSTIFICATION_OPTIONS.includes(editingPlateJust) && editingPlateJust !== 'RODOU' && (
+                                               <option value={editingPlateJust}>{editingPlateJust}</option>
+                                           )}
+                                           {JUSTIFICATION_OPTIONS.map(opt => (
+                                             <option key={opt} value={opt}>{opt}</option>
+                                           ))}
+                                           <option value="RODOU">RODOU</option>
+                                        </select>
                                         <button disabled={isSavingJust} onClick={() => handleSaveJustification(item.date, item.plate, item.reportId, item.fullJustifications)} className="p-1.5 flex items-center justify-center bg-emerald-500 text-white rounded hover:bg-emerald-600 shadow-sm disabled:opacity-50"><span className="material-symbols-outlined text-[16px]">check</span></button>
                                         <button disabled={isSavingJust} onClick={() => setEditingPlateKey(null)} className="p-1.5 flex items-center justify-center bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300 rounded hover:bg-slate-300 dark:hover:bg-slate-600 shadow-sm disabled:opacity-50"><span className="material-symbols-outlined text-[16px]">close</span></button>
                                       </div>

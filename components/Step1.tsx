@@ -80,6 +80,12 @@ const Step1: React.FC<Step1Props> = ({ data, updateData, onNext, svcOptions }) =
           <span className="material-symbols-outlined text-primary text-xl">local_shipping</span>
           <h2 className="text-lg font-bold text-primary dark:text-slate-100">Oferta & Capacidade da Frota</h2>
         </div>
+        <div className="mb-4 bg-red-50 dark:bg-rose-950/30 border border-red-200 dark:border-rose-900/50 p-3 rounded-lg flex items-start gap-2.5 shadow-sm">
+          <span className="material-symbols-outlined text-red-600 dark:text-red-500 text-[18px] mt-0.5 shrink-0">warning</span>
+          <p className="text-[13px] font-medium text-red-800 dark:text-rose-300 leading-relaxed uppercase">
+            <strong>Atenção:</strong> Insira aqui <strong>apenas carros SPOT</strong> e frota transmaná. Carros de <strong>frota fixa NÃO devem</strong> ser colocados aqui!
+          </p>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
           {data.categories.map((category) => (
             <div key={category.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700">
