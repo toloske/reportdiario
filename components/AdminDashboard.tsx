@@ -68,6 +68,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [detSvcFilter, setDetSvcFilter] = useState('');
   const [detStatusFilter, setDetStatusFilter] = useState<'all'|'ran'|'idle'>('all');
   const [detPlateFilter, setDetPlateFilter] = useState('');
+  const [detSortConfig, setDetSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   const [utilActiveTab, setUtilActiveTab] = useState<'overview'|'details'>('overview');
   const [editingPlateKey, setEditingPlateKey] = useState<string | null>(null);
   const [editingPlateJust, setEditingPlateJust] = useState('');
@@ -1590,9 +1591,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 (detStatusFilter === 'all' || (detStatusFilter === 'ran' ? d.didRun : !d.didRun))
              );
              
+             let finalDisplayedDetails = [...filteredDetails];
+             if (detSortConfig) {
+               finalDisplayedDetails.sort((a, b) => {
+                 let aVal = a[detSortConfig.key as keyof typeof a] || '';
+                 let bVal = b[detSortConfig.key as keyof typeof b] || '';
+                 
+                 if (detSortConfig.key === 'didRun') {
+                    aVal = a.didRun ? 1 : 0;
+                    bVal = b.didRun ? 1 : 0;
+                 }
+                 
+                 if (aVal < bVal) return detSortConfig.direction === 'asc' ? -1 : 1;
+                 if (aVal > bVal) return detSortConfig.direction === 'asc' ? 1 : -1;
+                 return 0;
+               });
+             }
+             
+             const handleDetSort = (key: string) => {
+                let direction: 'asc' | 'desc' = 'asc';
+                if (detSortConfig && detSortConfig.key === key && detSortConfig.direction === 'asc') direction = 'desc';
+                setDetSortConfig({ key, direction });
+             };
+             
              const handleExportDetailedPlate = () => {
                 const rows = [["Data", "SVC", "Placa", "Carregou (1=Sim/0=Nao)", "Justificativa"]];
-                filteredDetails.forEach(d => {
+                finalDisplayedDetails.forEach(d => {
                    rows.push([d.date.split('-').reverse().join('/'), d.svc, d.plate, d.didRun ? '1' : '0', d.reason]);
                 });
                 const csvContent = rows.map(r => r.join(";")).join("\n");
@@ -1657,22 +1681,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
                  <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-xl max-h-[400px] overflow-y-auto custom-scrollbar">
                    <table className="w-full text-sm text-left relative">
-                     <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0 z-10 shadow-sm">
+                     <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0 z-10 shadow-sm select-none">
                        <tr>
-                         <th className="px-5 py-4 w-1/6">Data</th>
-                         <th className="px-5 py-4 w-1/6">SVC</th>
-                         <th className="px-5 py-4 w-1/6">Placa</th>
-                         <th className="px-5 py-4 text-center w-1/6">Status (Carregou)</th>
-                         <th className="px-5 py-4 w-2/6">Justificativa Reportada</th>
+                         <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('date')}>
+                           <div className="flex items-center gap-1">Data {detSortConfig?.key === 'date' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                         </th>
+                         <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('svc')}>
+                           <div className="flex items-center gap-1">SVC {detSortConfig?.key === 'svc' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                         </th>
+                         <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('plate')}>
+                           <div className="flex items-center gap-1">Placa {detSortConfig?.key === 'plate' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                         </th>
+                         <th className="px-5 py-4 w-1/6 text-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('didRun')}>
+                           <div className="flex items-center justify-center gap-1">Status (Carregou) {detSortConfig?.key === 'didRun' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                         </th>
+                         <th className="px-5 py-4 w-2/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('reason')}>
+                           <div className="flex items-center gap-1">Justificativa Reportada {detSortConfig?.key === 'reason' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                         </th>
                        </tr>
                      </thead>
                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                        {filteredDetails.length === 0 ? (
+                        {finalDisplayedDetails.length === 0 ? (
                            <tr>
                               <td colSpan={5} className="px-5 py-12 text-center text-slate-400 font-medium">Nenhum registro encontrado para os filtros aplicados.</td>
                            </tr>
                         ) : (
-                           filteredDetails.map((item, idx) => (
+                           finalDisplayedDetails.map((item, idx) => (
                               <tr key={idx} className={`transition-colors ${(!item.didRun && item.reason && item.reason.toUpperCase().includes('RODOU')) ? 'bg-red-100 hover:bg-red-200 dark:bg-rose-900/30 dark:hover:bg-rose-900/50' : 'hover:bg-slate-50 dark:hover:bg-slate-800/80'}`}>
                                  <td className="px-5 py-3.5 font-medium text-slate-600 dark:text-slate-300">{item.date.split('-').reverse().join('/')}</td>
                                  <td className="px-5 py-3.5 font-bold text-slate-800 dark:text-slate-200">{item.svc}</td>
