@@ -86,11 +86,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     if (!reportId) return;
     setIsSavingJust(true);
     try {
-      let newJustsArray = fullJustifications.split('; ').map(j => j.trim());
-      const prefix = `"${plate}" -`;
+      let newJustsArray = (fullJustifications || '').split('; ').map(j => j.trim()).filter(Boolean);
       let found = false;
       for (let i = 0; i < newJustsArray.length; i++) {
-        if (newJustsArray[i].startsWith(prefix)) {
+        const match = newJustsArray[i].match(/"?([A-Za-z0-9]+)"?\s*-\s*(.*)/);
+        if (match && match[1] === plate) {
           newJustsArray[i] = `"${plate}" - ${editingPlateJust}`;
           found = true;
           break;
@@ -114,6 +114,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
          return d;
       }));
     } catch (e) {
+      console.error(e);
       alert("Erro ao salvar a justificativa.");
     } finally {
       setIsSavingJust(false);
@@ -308,19 +309,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         });
 
         const reportCache: Record<string, {reason: string, reportId: string, fullJustifications: string}> = {};
+        const svcReportMap: Record<string, any> = {};
+        
         fetchedReports.forEach(rep => {
-            if (validSvcIds.includes(rep.svc_id) && rep.justifications) {
-                const justs = rep.justifications.split('; ');
-                justs.forEach((j: string) => {
-                    const match = j.match(/"?([A-Za-z0-9]+)"?\s*-\s*(.*)/);
-                    if (match) {
-                        reportCache[`${rep.date}|${match[1]}`] = {
-                            reason: match[2].trim(),
-                            reportId: rep.id,
-                            fullJustifications: rep.justifications
-                        };
-                    }
-                });
+            if (validSvcIds.includes(rep.svc_id)) {
+                svcReportMap[`${rep.date}|${rep.svc_id}`] = rep;
+                if (rep.justifications) {
+                    const justs = rep.justifications.split('; ');
+                    justs.forEach((j: string) => {
+                        const match = j.match(/"?([A-Za-z0-9]+)"?\s*-\s*(.*)/);
+                        if (match) {
+                            reportCache[`${rep.date}|${match[1]}`] = {
+                                reason: match[2].trim(),
+                                reportId: rep.id,
+                                fullJustifications: rep.justifications
+                            };
+                        }
+                    });
+                }
             }
         });
 
@@ -336,8 +342,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     const didRun = routesByDateAndPlate[`${date}|${plate}`] || false;
                     const cacheEntry = reportCache[`${date}|${plate}`];
                     let reason = cacheEntry ? cacheEntry.reason : '';
-                    const reportId = cacheEntry ? cacheEntry.reportId : null;
-                    const fullJustifications = cacheEntry ? cacheEntry.fullJustifications : null;
+                    
+                    const svcEntry = svcReportMap[`${date}|${svc}`];
+                    const reportId = cacheEntry ? cacheEntry.reportId : (svcEntry ? svcEntry.id : null);
+                    const fullJustifications = cacheEntry ? cacheEntry.fullJustifications : (svcEntry ? svcEntry.justifications : null);
                     
                     if (didRun && !reason) {
                         reason = 'RODOU (Identificado via Rota)';
