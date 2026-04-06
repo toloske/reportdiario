@@ -83,13 +83,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [summaryLoading, setSummaryLoading] = useState(false);
 
   const handleSaveJustification = async (date: string, plate: string, reportId: string, fullJustifications: string) => {
-    if (!reportId) return;
+    if (!reportId) {
+      alert("Não é possível salvar: o relatório diário para este SVC nesta data ainda não foi criado pelo despachante.");
+      return;
+    }
     setIsSavingJust(true);
     try {
       let newJustsArray = (fullJustifications || '').split('; ').map(j => j.trim()).filter(Boolean);
       let found = false;
       for (let i = 0; i < newJustsArray.length; i++) {
-        const match = newJustsArray[i].match(/"?([A-Za-z0-9]+)"?\s*-\s*(.*)/);
+        const match = newJustsArray[i].match(/"?([A-Za-z0-9-]+)"?\s*-\s*(.*)/);
         if (match && match[1] === plate) {
           newJustsArray[i] = `"${plate}" - ${editingPlateJust}`;
           found = true;
@@ -317,7 +320,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 if (rep.justifications) {
                     const justs = rep.justifications.split('; ');
                     justs.forEach((j: string) => {
-                        const match = j.match(/"?([A-Za-z0-9]+)"?\s*-\s*(.*)/);
+                        const match = j.match(/"?([A-Za-z0-9-]+)"?\s*-\s*(.*)/);
                         if (match) {
                             reportCache[`${rep.date}|${match[1]}`] = {
                                 reason: match[2].trim(),

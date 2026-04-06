@@ -132,10 +132,12 @@ export const getReportsByDateRange = async (startDate: string, endDate: string) 
 };
 
 export const updateReportJustifications = async (reportId: string, newJustifications: string) => {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('daily_reports')
     .update({ justifications: newJustifications })
-    .eq('id', reportId);
+    .eq('id', reportId)
+    .select()
+    .single();
 
   if (error) {
     console.error('Error updating report justifications:', error);
