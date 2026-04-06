@@ -103,32 +103,68 @@ export const saveReport = async (data: FormData): Promise<SavedReport | null> =>
 };
 
 export const getReportsByDate = async (dateStr: string) => {
-  const { data, error } = await supabase
-    .from('daily_reports')
-    .select('*')
-    .eq('date', dateStr)
-    .order('created_at', { ascending: false });
+  let allData: any[] = [];
+  let from = 0;
+  const limit = 1000;
+  let hasMore = true;
 
-  if (error) {
-    console.error('Error fetching reports:', error);
-    return [];
+  while (hasMore) {
+    const to = from + limit - 1;
+    const { data, error } = await supabase
+      .from('daily_reports')
+      .select('*')
+      .eq('date', dateStr)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, to);
+
+    if (error) {
+      console.error('Error fetching reports:', error);
+      break;
+    }
+
+    if (data && data.length > 0) {
+      allData = [...allData, ...data];
+      if (data.length < limit) hasMore = false;
+      else from += limit;
+    } else {
+      hasMore = false;
+    }
   }
-  return data || [];
+  return allData;
 };
 
 export const getReportsByDateRange = async (startDate: string, endDate: string) => {
-  const { data, error } = await supabase
-    .from('daily_reports')
-    .select('*')
-    .gte('date', startDate)
-    .lte('date', endDate)
-    .order('date', { ascending: false });
+  let allData: any[] = [];
+  let from = 0;
+  const limit = 1000;
+  let hasMore = true;
 
-  if (error) {
-    console.error('Error fetching reports by range:', error);
-    return [];
+  while (hasMore) {
+    const to = from + limit - 1;
+    const { data, error } = await supabase
+      .from('daily_reports')
+      .select('*')
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, to);
+
+    if (error) {
+      console.error('Error fetching reports by range:', error);
+      break;
+    }
+
+    if (data && data.length > 0) {
+      allData = [...allData, ...data];
+      if (data.length < limit) hasMore = false;
+      else from += limit;
+    } else {
+      hasMore = false;
+    }
   }
-  return data || [];
+  return allData;
 };
 
 export const updateReportJustifications = async (reportId: string, newJustifications: string) => {
@@ -171,32 +207,66 @@ export const saveDailyRoutes = async (payload: any[]) => {
 };
 
 export const getDailyRoutesByDate = async (dateStr: string) => {
-  const { data, error } = await supabase
-    .from('daily_routes')
-    .select('*')
-    .eq('date', dateStr)
-    .order('created_at', { ascending: false });
+  let allData: any[] = [];
+  let from = 0;
+  const limit = 1000;
+  let hasMore = true;
 
-  if (error) {
-    console.error('Error fetching daily routes:', error);
-    return [];
+  while (hasMore) {
+    const to = from + limit - 1;
+    const { data, error } = await supabase
+      .from('daily_routes')
+      .select('*')
+      .eq('date', dateStr)
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (error) {
+      console.error('Error fetching daily routes:', error);
+      break;
+    }
+
+    if (data && data.length > 0) {
+      allData = [...allData, ...data];
+      if (data.length < limit) hasMore = false;
+      else from += limit;
+    } else {
+      hasMore = false;
+    }
   }
-  return data || [];
+  return allData;
 };
 
 export const getDailyRoutesByDateRange = async (startDate: string, endDate: string) => {
-  const { data, error } = await supabase
-    .from('daily_routes')
-    .select('*')
-    .gte('date', startDate)
-    .lte('date', endDate)
-    .order('date', { ascending: false });
+  let allData: any[] = [];
+  let from = 0;
+  const limit = 1000;
+  let hasMore = true;
 
-  if (error) {
-    console.error('Error fetching daily routes by range:', error);
-    return [];
+  while (hasMore) {
+    const to = from + limit - 1;
+    const { data, error } = await supabase
+      .from('daily_routes')
+      .select('*')
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date', { ascending: false })
+      .range(from, to);
+
+    if (error) {
+      console.error('Error fetching daily routes by range:', error);
+      break;
+    }
+
+    if (data && data.length > 0) {
+      allData = [...allData, ...data];
+      if (data.length < limit) hasMore = false;
+      else from += limit;
+    } else {
+      hasMore = false;
+    }
   }
-  return data || [];
+  return allData;
 };
 
 export const exportToCSV = () => { };
