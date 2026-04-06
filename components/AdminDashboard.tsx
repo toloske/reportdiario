@@ -106,8 +106,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
       // Local update detailedData to avoid heavy reload
       setDetailedUtilizationData(prev => prev.map(d => {
-         if (d.date === date && d.plate === plate) {
-            return { ...d, reason: editingPlateJust, fullJustifications: updatedStr };
+         // Update fullJustifications for all plates in this report so subsequent edits don't overwrite previous ones
+         if (d.reportId === reportId) {
+            const reason = d.plate === plate ? editingPlateJust : d.reason;
+            return { ...d, reason, fullJustifications: updatedStr };
          }
          return d;
       }));
