@@ -68,6 +68,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [detailedUtilizationData, setDetailedUtilizationData] = useState<any[]>([]);
   const [detSvcFilter, setDetSvcFilter] = useState('');
   const [detStatusFilter, setDetStatusFilter] = useState<'all'|'ran'|'idle'>('all');
+  const [detAnomalyFilter, setDetAnomalyFilter] = useState<'all'|'divergent'|'red'>('all');
   const [detPlateFilter, setDetPlateFilter] = useState('');
   const [detSortConfig, setDetSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   const [utilActiveTab, setUtilActiveTab] = useState<'overview'|'details'>('overview');
@@ -1825,7 +1826,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
              const filteredDetails = detailedUtilizationData.filter(d => 
                 (!detSvcFilter || d.svc === detSvcFilter) &&
                 (!detPlateFilter || d.plate.toLowerCase().includes(detPlateFilter.toLowerCase())) &&
-                (detStatusFilter === 'all' || (detStatusFilter === 'ran' ? d.didRun : !d.didRun))
+                (detStatusFilter === 'all' || (detStatusFilter === 'ran' ? d.didRun : !d.didRun)) &&
+                (detAnomalyFilter === 'all' || 
+                 (detAnomalyFilter === 'divergent' && (
+                     (!d.didRun && d.reason && d.reason.toUpperCase().includes('RODOU')) ||
+                     (d.didRun && d.reason && d.reason.startsWith('[RODOU]')) ||
+                     (!d.didRun && d.reason === 'Sem justificativa preenchida')
+                 )) ||
+                 (detAnomalyFilter === 'red' && (
+                     (!d.didRun && d.reason && d.reason.toUpperCase().includes('RODOU')) ||
+                     (!d.didRun && d.reason === 'Sem justificativa preenchida')
+                 ))
+                )
              );
              
              let finalDisplayedDetails = [...filteredDetails];
@@ -1883,7 +1895,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                    </button>
                  </div>
 
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Filtrar por Placa</label>
                       <input 
@@ -1912,6 +1924,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                         <button onClick={() => setDetStatusFilter('all')} className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${detStatusFilter === 'all' ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Todos</button>
                         <button onClick={() => setDetStatusFilter('ran')} className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${detStatusFilter === 'ran' ? 'bg-emerald-500 text-white shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Carregou (1)</button>
                         <button onClick={() => setDetStatusFilter('idle')} className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${detStatusFilter === 'idle' ? 'bg-rose-500 text-white shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Parado (0)</button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Filtro de Anomalias</label>
+                      <div className="flex gap-2">
+                        <button onClick={() => setDetAnomalyFilter('all')} className={`flex-1 py-1.5 sm:py-2.5 text-[10px] sm:text-xs font-bold rounded-xl transition-all ${detAnomalyFilter === 'all' ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Todas</button>
+                        <button onClick={() => setDetAnomalyFilter('divergent')} className={`flex-1 py-1.5 sm:py-2.5 text-[10px] sm:text-xs font-bold rounded-xl transition-all ${detAnomalyFilter === 'divergent' ? 'bg-amber-500 text-white shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Divergências</button>
+                        <button onClick={() => setDetAnomalyFilter('red')} className={`flex-1 py-1.5 sm:py-2.5 text-[10px] sm:text-xs font-bold rounded-xl transition-all ${detAnomalyFilter === 'red' ? 'bg-red-500 text-white shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Em Vermelho (Erros)</button>
                       </div>
                     </div>
                  </div>
