@@ -69,7 +69,7 @@ async function run() {
   // To avoid timeouts on what's already uploaded, we start pushing from the end!
   payloadToInsert.reverse();
   
-  const BATCH_SIZE = 4000;
+  const BATCH_SIZE = 1000;
   for (let i = 0; i < payloadToInsert.length; i += BATCH_SIZE) {
     const chunk = payloadToInsert.slice(i, i + BATCH_SIZE);
     console.log(`Uploading chunk ${i} to ${i + chunk.length}...`);

@@ -57,6 +57,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditResults, setAuditResults] = useState<any[] | null>(null);
 
+  const getWeekStringFromDate = (dateStr: string) => {
+    const d = new Date(dateStr + 'T00:00:00');
+    const firstJan = new Date(d.getFullYear(), 0, 1);
+    const pastDaysOfYear = (d.getTime() - firstJan.getTime()) / 86400000;
+    const weekNum = Math.ceil((pastDaysOfYear + firstJan.getDay() + 1) / 7);
+    return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+  };
+
   // Dashboard Diretoria States
   const [dirStartDate, setDirStartDate] = useState(getLocalDateString());
   const [dirEndDate, setDirEndDate] = useState(getLocalDateString());
@@ -71,7 +79,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [detAnomalyFilter, setDetAnomalyFilter] = useState<'all'|'divergent'|'red'>('all');
   const [detPlateFilter, setDetPlateFilter] = useState('');
   const [detSortConfig, setDetSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
-  const [utilActiveTab, setUtilActiveTab] = useState<'overview'|'details'>('overview');
+  const [utilActiveTab, setUtilActiveTab] = useState<'overview'|'details'|'weekly'>('overview');
+  
+  // States for Weekly Vision
+  const [weeklyDate, setWeeklyDate] = useState(getLocalDateString());
+  const [weeklyWeekVal, setWeeklyWeekVal] = useState(getWeekStringFromDate(getLocalDateString()));
+  const [weeklySvcFilter, setWeeklySvcFilter] = useState('');
+  const [weeklyData, setWeeklyData] = useState<any[]>([]);
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
+  const [weeklyDays, setWeeklyDays] = useState<{date: string, dayName: string, shortDate: string}[]>([]);
+  const [weeklySummary, setWeeklySummary] = useState<Record<string, {fixedRan: number, fixedTotal: number, spotRan: number, spotOffer: number}>>({});
   const [editingPlateKey, setEditingPlateKey] = useState<string | null>(null);
   const [editingPlateJust, setEditingPlateJust] = useState('');
   const [isSavingJust, setIsSavingJust] = useState(false);
@@ -379,6 +396,148 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
     loadUtilization();
   }, [startDate, endDate, activeTab, svcs, mercadoLivreSvcs, fixedVehicles]);
+
+  useEffect(() => {
+    const loadWeeklyData = async () => {
+      if (activeTab === 'utilization' && utilActiveTab === 'weekly' && svcs.length > 0 && weeklySvcFilter) {
+        setWeeklyLoading(true);
+        
+        const dateObj = new Date(weeklyDate + 'T00:00:00');
+        const dayOfWeek = dateObj.getDay(); 
+        const sunday = new Date(dateObj);
+        sunday.setDate(dateObj.getDate() - dayOfWeek);
+        
+        const daysArray: {date: string, dayName: string, shortDate: string}[] = [];
+        const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+        for (let i = 0; i < 7; i++) {
+           const d = new Date(sunday);
+           d.setDate(sunday.getDate() + i);
+           const dStr = getLocalDateString(d);
+           daysArray.push({
+              date: dStr,
+              dayName: dayNames[i],
+              shortDate: dStr.split('-').reverse().slice(0, 2).join('/')
+           });
+        }
+        
+        setWeeklyDays(daysArray);
+        
+        const startStr = daysArray[0].date;
+        const endStr = daysArray[6].date;
+        
+        const [fetchedReports, fetchedRoutes] = await Promise.all([
+          getReportsByDateRange(startStr, endStr),
+          getDailyRoutesByDateRange(startStr, endStr)
+        ]);
+
+        const currentFixedVehicles = weeklySvcFilter === '' ? fixedVehicles : fixedVehicles.filter(v => v.svc_id === weeklySvcFilter);
+        const validFixedPlates = currentFixedVehicles.map(v => v.plate);
+        
+        const routesByDateAndPlate: Record<string, boolean> = {};
+        fetchedRoutes.forEach(r => {
+            routesByDateAndPlate[`${r.date}|${r.plate}`] = true;
+        });
+
+        const reportCache: Record<string, {reason: string, reportId: string, fullJustifications: string}> = {};
+        const spotDataByDate: Record<string, {offerSpot: number, spotRan: number}> = {};
+        
+        daysArray.forEach(d => {
+             spotDataByDate[d.date] = { offerSpot: 0, spotRan: 0 };
+        });
+
+        fetchedReports.forEach(rep => {
+            if (weeklySvcFilter === '' || rep.svc_id === weeklySvcFilter) {
+                // Populate Spot Offer
+                INITIAL_CATEGORIES.forEach(cat => {
+                   const key = `offer_${cat.id.replace(/-/g, '_')}`;
+                   spotDataByDate[rep.date].offerSpot += (rep[key] || 0);
+                });
+
+                if (rep.justifications) {
+                    const justs = rep.justifications.split('; ');
+                    justs.forEach((j: string) => {
+                        const match = j.match(/"?([A-Za-z0-9-]+)"?\s*-\s*(.*)/);
+                        if (match) {
+                            reportCache[`${rep.date}|${match[1]}`] = {
+                                reason: match[2].trim(),
+                                reportId: rep.id,
+                                fullJustifications: rep.justifications
+                            };
+                        }
+                    });
+                }
+            }
+        });
+
+        const spotRanCounts: Record<string, number> = {};
+        fetchedRoutes.forEach(r => {
+             const svc = r.xpt?.toUpperCase() === 'ESP8' ? 'XPT' : (r.svc_id || '');
+             if (weeklySvcFilter === '' || svc === weeklySvcFilter) {
+                 if (!validFixedPlates.includes(r.plate)) {
+                     spotRanCounts[r.date] = (spotRanCounts[r.date] || 0) + 1;
+                 }
+             }
+        });
+
+        const plateRows: any[] = [];
+        
+        validFixedPlates.forEach(plate => {
+             const rowDays: Record<string, any> = {};
+             let daysRan = 0;
+             let validDaysForPlate = 0;
+
+             daysArray.forEach(day => {
+                  const dStr = day.date;
+                  const didRun = routesByDateAndPlate[`${dStr}|${plate}`] || false;
+                  const cacheEntry = reportCache[`${dStr}|${plate}`];
+                  let reason = cacheEntry ? cacheEntry.reason : '';
+
+                  if (didRun && !reason) reason = 'RODOU (Identificado via Rota)';
+                  else if (didRun && !reason.includes('RODOU')) reason = `[RODOU] ${reason}`;
+
+                  if (didRun) daysRan++;
+                  if (didRun || reason) validDaysForPlate++; // Assume expected if reason exists or ran
+                  
+                  rowDays[dStr] = { didRun, reason };
+             });
+
+             plateRows.push({
+                 plate,
+                 svc: currentFixedVehicles.find(v => v.plate === plate)?.svc_id || '',
+                 days: rowDays,
+                 daysRan,
+                 validDaysForPlate, // Use this for a % util if desired, or assume 7.
+                 utilizationPuraPerc: (daysRan / 7) * 100,
+                 utilizationMeliPerc: ((daysRan * 1.16279) / 7) * 100
+             });
+        });
+
+        // Compute summary bottom row
+        const newSummary: Record<string, {fixedRan: number, fixedTotal: number, spotRan: number, spotOffer: number}> = {};
+        daysArray.forEach(day => {
+            const dStr = day.date;
+            let fixedRan = 0;
+            validFixedPlates.forEach(p => {
+               if (routesByDateAndPlate[`${dStr}|${p}`]) fixedRan++;
+            });
+            const spotRan = spotRanCounts[dStr] || 0;
+            const spotOffer = spotDataByDate[dStr]?.offerSpot || 0;
+            
+            newSummary[dStr] = {
+                fixedRan,
+                fixedTotal: validFixedPlates.length,
+                spotRan,
+                spotOffer
+            };
+        });
+        
+        setWeeklySummary(newSummary);
+        setWeeklyData(plateRows.sort((a,b) => b.utilizationMeliPerc - a.utilizationMeliPerc)); // Sort by Meli utilization
+        setWeeklyLoading(false);
+      }
+    };
+    loadWeeklyData();
+  }, [weeklyDate, weeklySvcFilter, utilActiveTab, fixedVehicles, svcs]);
 
   useEffect(() => {
     const fetchDirData = async () => {
@@ -781,7 +940,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                  date: formattedDate,
                  plate: String(rawPlate).replace(/[^A-Za-z0-9]/g, '').toUpperCase(),
                  svc_id: String(row['SVC'] || '').trim(),
-                 vehicle_type: String(row['Veículo'] || row['Modal'] || '').trim(),
+                 vehicle_type: String(row['Tipo Veiculo'] || row['Veículo'] || row['Modal'] || '').trim(),
                  xpt: String(row['XPT'] || '').trim()
             });
           }
@@ -1076,7 +1235,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 onClick={() => setUtilActiveTab('details')} 
                 className={`px-5 py-2.5 text-sm font-bold tracking-wide rounded-xl transition-all ${utilActiveTab === 'details' ? 'bg-indigo-600 text-white shadow-md scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700'}`}
               >
-                Visão Placa a Placa
+                Visão Placa a Placa (Dia)
+              </button>
+              <button 
+                onClick={() => setUtilActiveTab('weekly')} 
+                className={`px-5 py-2.5 text-sm font-bold tracking-wide rounded-xl transition-all ${utilActiveTab === 'weekly' ? 'bg-indigo-600 text-white shadow-md scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700'}`}
+              >
+                Visão Semanal Placa a Placa
               </button>
             </div>
           </div>
@@ -2030,6 +2195,198 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                </div>
              );
           })()}
+
+          {/* VISÃO SEMANAL PLACA A PLACA */}
+          {utilActiveTab === 'weekly' && (() => {
+             const handleExportWeeklyCSV = () => {
+                if (weeklyData.length === 0) return;
+                const rows = [["SVC", "Placa", "Domingo", "Segunda", "Terca", "Quarta", "Quinta", "Sexta", "Sabado", "Utilizacao Pura (%)", "Utilizacao Meli (%)"]];
+                weeklyData.forEach(row => {
+                   const dDays = weeklyDays.map(d => {
+                      const cell = row.days[d.date];
+                      if (!cell) return "-";
+                      if (cell.didRun) return "RODOU";
+                      if (!cell.didRun && cell.reason && cell.reason !== 'Sem justificativa preenchida') return cell.reason;
+                      return "Faltou/Sem Dado";
+                   });
+                   rows.push([row.svc, row.plate, ...dDays, row.utilizationPuraPerc.toFixed(1), row.utilizationMeliPerc.toFixed(1)]);
+                });
+                const csvContent = rows.map(r => r.join(";")).join("\n");
+                const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.setAttribute("download", `Visao_Semanal_${weeklyWeekVal}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+             };
+
+             return (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] p-6 mt-8">
+               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
+                 <div>
+                   <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                     <span className="material-symbols-outlined text-indigo-500">calendar_month</span>
+                     Visão Semanal Placa a Placa (DOM a SAB)
+                   </h3>
+                   <p className="text-xs text-slate-500 mt-1">Acompanhamento de faltas e dias carregados por carro ao longo da semana.</p>
+                 </div>
+                 <button onClick={handleExportWeeklyCSV} className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 text-sm shadow-md transition-all active:scale-95">
+                   <span className="material-symbols-outlined text-[18px]">download</span>
+                   Exportar Relatório Semanal
+                 </button>
+               </div>
+
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Filtro de Semana do Ano</label>
+                    <input 
+                      type="week" 
+                      value={weeklyWeekVal} 
+                      onChange={(e) => {
+                         const val = e.target.value;
+                         setWeeklyWeekVal(val);
+                         if (val) {
+                            const [year, week] = val.split('-W');
+                            const simple = new Date(Number(year), 0, 1 + (Number(week) - 1) * 7);
+                            const dayOfWeek = simple.getDay();
+                            simple.setDate(simple.getDate() - dayOfWeek);
+                            setWeeklyDate(getLocalDateString(simple));
+                         }
+                      }} 
+                      className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-indigo-500 shadow-sm outline-none" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Filtrar por SVC</label>
+                    <div className="relative">
+                      <select value={weeklySvcFilter} onChange={e => setWeeklySvcFilter(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-indigo-500 shadow-sm appearance-none">
+                        <option value="">Geral / Todos os SVCs</option>
+                        {Array.from(new Set(fixedVehicles.map(v => v.svc_id))).sort().map(s => (
+                           <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                      <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_content</span>
+                    </div>
+                  </div>
+               </div>
+
+               {weeklyLoading ? (
+                 <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-slate-300 border-t-indigo-600 rounded-full animate-spin"></div></div>
+               ) : (
+                 <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-xl max-h-[600px] overflow-y-auto custom-scrollbar">
+                   <table className="w-full text-sm text-center relative border-collapse">
+                     <thead className="bg-slate-800 text-slate-200 text-[11px] uppercase font-bold tracking-wider sticky top-0 z-20 shadow-sm select-none">
+                       <tr>
+                         <th className="px-3 py-3 w-40 sticky left-0 z-30 bg-slate-900 border-r border-slate-700 text-left">Placa (SVC)</th>
+                         {weeklyDays.map(d => (
+                             <th key={d.date} className="px-3 py-3 border-r border-slate-700 min-w-[90px]">
+                                 <div className="flex flex-col"><span>{d.dayName}</span><span className="text-[10px] text-slate-400 font-normal">{d.shortDate}</span></div>
+                             </th>
+                         ))}
+                         <th className="px-3 py-3 min-w-[100px] bg-slate-700/80 text-center">Utilização<br/>Pura (1/dia)</th>
+                         <th className="px-3 py-3 min-w-[100px] bg-indigo-900/80 text-center">Utilização<br/>Meli (x1.16)</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-200/50 dark:divide-slate-700/50">
+                        {weeklyData.length === 0 ? (
+                           <tr>
+                              <td colSpan={10} className="px-5 py-12 text-center text-slate-400 font-medium bg-white dark:bg-slate-900">Nenhum veículo fixo encontrado.</td>
+                           </tr>
+                        ) : (
+                           weeklyData.map((row, idx) => (
+                              <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
+                                 <td className="px-3 py-2.5 font-bold text-slate-800 dark:text-slate-200 sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/80 border-r border-slate-300 dark:border-slate-700 text-left">
+                                     <div className="flex flex-col">
+                                       <span className="font-mono text-[13px]">{row.plate}</span>
+                                       <span className="text-[10px] text-slate-400 font-normal">{row.svc}</span>
+                                     </div>
+                                 </td>
+                                 {weeklyDays.map(d => {
+                                     const cellData = row.days[d.date];
+                                     if (!cellData) return <td key={d.date} className="border-r border-slate-200/50 dark:border-slate-800 bg-slate-50/50"></td>;
+                                     
+                                     const isFuture = d.date > getLocalDateString();
+                                     let bgClass = "bg-slate-100 dark:bg-slate-800/50";
+                                     let content = <span className="material-symbols-outlined text-[16px] text-slate-300">-</span>;
+                                     let title = "Sem dado";
+
+                                     if (cellData.didRun) {
+                                         bgClass = "bg-emerald-100/60 dark:bg-emerald-900/20";
+                                         content = <span className="material-symbols-outlined text-[18px] text-emerald-600 dark:text-emerald-400">check_circle</span>;
+                                         title = "RODOU";
+                                     } else if (!cellData.didRun && cellData.reason && cellData.reason !== 'Sem justificativa preenchida') {
+                                         bgClass = "bg-rose-100/60 dark:bg-rose-900/20";
+                                         content = <span className="material-symbols-outlined text-[18px] text-rose-500">cancel</span>;
+                                         title = cellData.reason;
+                                     } else if (!isFuture && !cellData.didRun) {
+                                         bgClass = "bg-amber-100/60 dark:bg-amber-900/20";
+                                         content = <span className="material-symbols-outlined text-[18px] text-amber-500 outline-none">help</span>;
+                                         title = "Faltou (Sem Justif)";
+                                     }
+                                     return (
+                                        <td key={d.date} className={`relative group/cell border-r border-slate-200/50 dark:border-slate-800 cursor-help ${bgClass} transition hover:opacity-80`}>
+                                            <div className="flex items-center justify-center p-2.5 w-full h-full">
+                                               {content}
+                                            </div>
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 hidden group-hover/cell:flex bg-slate-800 text-white text-[11px] font-medium px-3 py-1.5 rounded shadow-xl pointer-events-none after:content-[''] after:absolute after:-bottom-1 after:left-1/2 after:-translate-x-1/2 after:border-l-4 after:border-r-4 after:border-t-4 after:border-transparent after:border-t-slate-800 max-w-[220px] whitespace-normal text-center leading-tight">
+                                                {title}
+                                            </div>
+                                        </td>
+                                     );
+                                 })}
+                                 <td className="px-3 py-2.5 font-bold text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 border-r border-slate-200 dark:border-slate-700 text-center">
+                                     <div className="flex flex-col items-center">
+                                        <span className={`text-[13px] px-2 py-0.5 rounded-md ${row.utilizationPuraPerc >= 85 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>{row.utilizationPuraPerc.toFixed(1)}%</span>
+                                     </div>
+                                 </td>
+                                 <td className="px-3 py-2.5 font-bold text-slate-700 dark:text-slate-300 bg-indigo-50/20 dark:bg-indigo-900/10 border-l border-indigo-200 dark:border-indigo-800/40 text-center">
+                                     <div className="flex flex-col items-center">
+                                        <span className={`text-[13px] px-2 py-0.5 rounded-md ${row.utilizationMeliPerc >= 100 ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>{row.utilizationMeliPerc.toFixed(1)}%</span>
+                                        <span className="text-[9px] text-slate-400 font-normal mt-0.5">{row.daysRan}d / 7</span>
+                                     </div>
+                                 </td>
+                              </tr>
+                           ))
+                        )}
+                        {/* FOOTER ROWS FOR TOTAL PERCENTAGES */}
+                        {weeklyData.length > 0 && weeklyDays.length > 0 && (() => {
+                             return (
+                                <>
+                                 <tr className="bg-slate-700 text-white shadow-inner font-bold text-[11px] border-t-2 border-slate-500">
+                                    <td className="px-3 py-3 sticky left-0 z-10 bg-slate-800 border-r border-slate-600 text-left uppercase tracking-wider">
+                                       Utilização Fixa
+                                    </td>
+                                    {weeklyDays.map(d => {
+                                        const stat = weeklySummary[d.date];
+                                        if (!stat || stat.fixedTotal === 0) return <td key={d.date} className="px-3 py-3 border-r border-slate-600">-</td>;
+                                        const px = ((stat.fixedRan / stat.fixedTotal) * 100).toFixed(1);
+                                        return (
+                                           <td key={d.date} className="px-3 py-3 border-r border-slate-600">
+                                              <div className="flex flex-col items-center">
+                                                 <span className={`${Number(px) >= 80 ? 'text-emerald-300' : 'text-amber-300'} text-[13px]`}>{px}%</span>
+                                                 <span className="text-[9px] text-slate-400 font-normal">{stat.fixedRan}/{stat.fixedTotal}</span>
+                                              </div>
+                                           </td>
+                                        );
+                                    })}
+                                    <td className="bg-slate-700/80 border-l border-slate-600"></td>
+                                    <td className="bg-indigo-900/80 border-l border-slate-600 text-center">
+                                      <div className="flex flex-col items-center justify-center opacity-80" title="Média Meli considera x1.16">
+                                        <span className="material-symbols-outlined text-[18px]">functions</span>
+                                      </div>
+                                    </td>
+                                 </tr>
+                                </>
+                             );
+                        })()}
+                     </tbody>
+                   </table>
+                 </div>
+               )}
+            </div>
+          )})()}
         </div>
       ) : activeTab === 'audit' && auditResults && auditResults.dbRouteCount > 0 ? (
         <div className="space-y-6">
