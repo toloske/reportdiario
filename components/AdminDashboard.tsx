@@ -1661,9 +1661,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               {missingSvcs.length > 0 && (
                 <button
                   onClick={() => {
-                     const svcsStr = missingSvcs.map(s => s.name).join(', ');
-                     const dataFormatada = selectedDate.split('-').reverse().slice(0, 2).join('/');
-                     const mensagem = `🚨 *Aviso de Pendência - Relatório Diário*\n\nOlá equipe! O relatório do dia *${dataFormatada}* está em fechamento.\n\nAinda estão faltando os registros das seguintes bases:\n${svcsStr}\n\nPor favor, confirmem o preenchimento o quanto antes para podermos fechar os números do dia. Obrigado!`;
+                     const svcsStr = missingSvcs.map(s => s.name).join('\n');
+                     const dataFormatada = selectedDate.split('-').reverse().join('/');
+                     const mensagem = `Faltam responder o forms dia ${dataFormatada}\n\nSVCS:\n${svcsStr}`;
                      
                      // wa.me without a number opens the WhatsApp web/app and prompts to "Select your contact/group"
                      const url = `https://wa.me/?text=${encodeURIComponent(mensagem)}`;
