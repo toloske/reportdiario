@@ -508,7 +508,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                  daysRan,
                  validDaysForPlate, // Use this for a % util if desired, or assume 7.
                  utilizationPuraPerc: (daysRan / 7) * 100,
-                 utilizationMeliPerc: ((daysRan * 1.16279) / 7) * 100
+                 utilizationMeliPerc: ((daysRan * 1.162790698) / 7) * 100
              });
         });
 
@@ -1875,7 +1875,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] mt-6">
                 <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-amber-50/50 dark:bg-amber-900/10 flex items-center gap-2">
                   <span className="material-symbols-outlined text-amber-500">timeline</span>
-                  <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Resumo Ajustado (Regra Mercado Livre x1.16)</h3>
+                  <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Resumo Ajustado (Regra Mercado Livre x1.16279...)</h3>
                 </div>
                 <div className="overflow-x-auto pb-2">
                   <table className="w-full text-left text-xs md:text-sm text-slate-600 dark:text-slate-300 min-w-[700px] md:min-w-0">
@@ -2346,7 +2346,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                              </th>
                          ))}
                          <th className="px-3 py-3 min-w-[100px] bg-slate-700/80 text-center">Utilização<br/>Pura (1/dia)</th>
-                         <th className="px-3 py-3 min-w-[100px] bg-indigo-900/80 text-center">Utilização<br/>Meli (x1.16)</th>
+                         <th className="px-3 py-3 min-w-[100px] bg-indigo-900/80 text-center">Utilização<br/>Meli (x1.162...)</th>
                        </tr>
                      </thead>
                      <tbody className="divide-y divide-slate-200/50 dark:divide-slate-700/50">
@@ -2355,15 +2355,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                               <td colSpan={10} className="px-5 py-12 text-center text-slate-400 font-medium bg-white dark:bg-slate-900 dark:text-slate-400">Nenhum veículo fixo encontrado.</td>
                            </tr>
                         ) : (
-                           weeklyData.map((row, idx) => (
-                              <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
-                                 <td className="px-3 py-2.5 font-bold text-slate-800 dark:text-slate-200 sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/80 border-r border-slate-300 dark:border-slate-700 text-left">
-                                     <div className="flex flex-col">
-                                       <span className="font-mono text-[13px]">{row.plate}</span>
-                                       <span className="text-[10px] text-slate-400 font-normal dark:text-slate-400">{row.svc}</span>
-                                     </div>
-                                 </td>
-                                 {weeklyDays.map(d => {
+                           weeklyData.map((row, idx) => {
+                               const countFaltas = weeklyDays.filter(d => {
+                                   const c = row.days[d.date];
+                                   const isPastOrToday = d.date <= getLocalDateString();
+                                   return c && !c.didRun && isPastOrToday && (c.reason === 'Falta' || c.reason === 'Sem justificativa preenchida');
+                               }).length;
+
+                               return (
+                               <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
+                                  <td className="px-3 py-2.5 font-bold text-slate-800 dark:text-slate-200 sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/80 border-r border-slate-300 dark:border-slate-700 text-left">
+                                      <div className="flex flex-col">
+                                        <div className="flex items-center justify-between">
+                                            <span className="font-mono text-[13px]">{row.plate}</span>
+                                            {countFaltas > 1 && (
+                                                <span title={`${countFaltas} faltas ou pendentes nesta semana`} className="material-symbols-outlined text-[14px] text-amber-500 cursor-help ml-1 p-0.5 bg-amber-50 dark:bg-amber-500/10 rounded-full">warning</span>
+                                            )}
+                                        </div>
+                                        <span className="text-[10px] text-slate-400 font-normal dark:text-slate-400">{row.svc}</span>
+                                      </div>
+                                  </td>
+                                  {weeklyDays.map(d => {
                                      const cellData = row.days[d.date];
                                      if (!cellData) return <td key={d.date} className="border-r border-slate-200/50 dark:border-slate-800 bg-slate-50/50"></td>;
                                      
@@ -2408,7 +2420,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                      </div>
                                  </td>
                               </tr>
-                           ))
+                               );
+                           })
                         )}
                         {/* FOOTER ROWS FOR TOTAL PERCENTAGES */}
                         {weeklyData.length > 0 && weeklyDays.length > 0 && (() => {
