@@ -26,3 +26,7 @@ dist-ssr
 # Environment Variables
 .env
 .env.local
+
+# Bot e Arquivos Temporarios
+bot/
+.wwebjs_auth/

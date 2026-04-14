@@ -117,14 +117,14 @@ const App: React.FC = () => {
 
   if (loadingSvcs) {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-50 text-slate-500">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-primary rounded-full animate-spin"></div>
+      <div className="flex h-screen items-center justify-center bg-slate-50 text-slate-500 dark:text-slate-400 dark:bg-slate-800/40">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-primary rounded-full animate-spin dark:border-slate-700"></div>
       </div>
     );
   }
 
   return (
-    <div className={`flex flex-col min-h-screen bg-slate-50 font-display mx-auto relative overflow-hidden ${view === View.ADMIN ? 'w-full' : 'max-w-md shadow-2xl shadow-blue-900/10 border-x border-slate-200'}`}>
+    <div className={`flex flex-col min-h-screen bg-slate-50 dark:bg-[#0b1120] font-display mx-auto relative overflow-hidden transition-colors duration-300 ${view === View.ADMIN ? 'w-full' : 'max-w-md shadow-[0_0_50px_rgba(30,58,138,0.1)] dark:shadow-[0_0_50px_rgba(0,0,0,0.5)] border-x border-slate-200 dark:border-slate-800'}`}>
       {/* Header / Navbar */}
       <Navbar
         view={view}
@@ -135,7 +135,7 @@ const App: React.FC = () => {
       />
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto pb-12">
+      <main className="flex-1 overflow-y-auto pb-12 custom-scrollbar">
         {view === View.ADMIN && (
           <AdminDashboard onBack={() => setView(View.FORM)} />
         )}

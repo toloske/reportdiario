@@ -399,7 +399,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
   useEffect(() => {
     const loadWeeklyData = async () => {
-      if (activeTab === 'utilization' && utilActiveTab === 'weekly' && svcs.length > 0 && weeklySvcFilter) {
+      if (activeTab === 'utilization' && utilActiveTab === 'weekly' && svcs.length > 0) {
         setWeeklyLoading(true);
         
         const dateObj = new Date(weeklyDate + 'T00:00:00');
@@ -924,14 +924,51 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         results.data.forEach((row: any) => {
           const rawRouteId = row[selectedPlateCol];
           const rawPlate = row['Placa'] || row['Plate'] || row['placa'];
-          const rawDate = row['Data'] || row['Data '] || row['Date'] || '';
+          const rawDateStr = row['Data'] || row['Data '] || row['Date'] || '';
+          const primeiraEntrega = row['Primeira Entrega'] || row['Primeira entrega'] || row['Início'] || '';
           
+          // Use Primeira Entrega if available to fix overnight route date errors, fallback to raw Date
+          let targetDateStr = rawDateStr;
+          if (primeiraEntrega) {
+             const datePart = primeiraEntrega.trim().split(' ')[0]; // Ex: "11/04/2026 14:30" -> "11/04/2026"
+             if (datePart.includes('/') || datePart.includes('-')) {
+                 targetDateStr = datePart;
+             }
+          }
+
           let formattedDate = '';
-          if (rawDate && rawDate.includes('/')) {
-             const parts = rawDate.split('/');
-             if (parts.length === 3) formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-          } else if (rawDate && rawDate.includes('-')) {
-             formattedDate = rawDate; // Ja no formato YYYY-MM-DD
+          if (targetDateStr) {
+              if (targetDateStr.includes('/')) {
+                 const parts = targetDateStr.split('/');
+                 if (parts.length >= 3) {
+                     let month, day, year;
+                     if (parts[0].length === 4) {
+                         year = parts[0]; month = parts[1]; day = parts[2];
+                     } else {
+                         const yearSlice = parts[2].split(' ')[0];
+                         year = yearSlice.length > 4 ? yearSlice.substring(0, 4) : yearSlice;
+                         if (parseInt(parts[1], 10) > 12) {
+                             month = parts[0]; day = parts[1];
+                         } else if (parseInt(parts[0], 10) > 12) {
+                             day = parts[0]; month = parts[1];
+                         } else {
+                             if (parts[0].length === 1 && parts[1].length === 2 && parseInt(parts[0], 10) > 0) {
+                                 month = parts[0]; day = parts[1];
+                             } else {
+                                 day = parts[0]; month = parts[1];
+                             }
+                         }
+                     }
+                     if (parseInt(month, 10) > 12) { const temp = month; month = day; day = temp; }
+                     formattedDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                 }
+              } else if (targetDateStr.includes('-')) {
+                 formattedDate = targetDateStr.split(' ')[0];
+                 const parts = formattedDate.split('-');
+                 if (parts.length === 3 && parts[2].length === 4) {
+                     formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                 }
+              }
           }
 
           if (rawRouteId && rawPlate && formattedDate) {
@@ -979,10 +1016,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   if (!isAuthenticated) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
-        <div className="bg-white dark:bg-slate-900 w-full max-w-sm p-8 rounded-3xl shadow-xl border border-slate-200 text-center">
+        <div className="bg-white dark:bg-slate-900 w-full max-w-sm p-8 rounded-3xl shadow-xl border border-slate-200 text-center dark:border-slate-700">
           <h2 className="text-2xl font-black mb-6">Acesso Restrito</h2>
           <form onSubmit={handleLogin} className="space-y-4">
-            <input type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-center" placeholder="Senha" />
+            <input type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-center dark:bg-slate-800/40" placeholder="Senha" />
             {passwordError && <p className="text-red-500 text-xs">Senha incorreta.</p>}
             <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold">Acessar</button>
           </form>
@@ -993,9 +1030,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-8 space-y-6 font-sans">
-      <div className="flex items-center justify-between bg-white dark:bg-slate-900 px-6 py-4 rounded-2xl shadow-sm border border-slate-200">
+      <div className="flex items-center justify-between bg-white dark:bg-slate-900 px-6 py-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
         <h2 className="text-xl font-extrabold text-primary">Painel Master</h2>
-        <button onClick={onBack} className="p-2 bg-slate-100 rounded-full"><span className="material-symbols-outlined">close</span></button>
+        <button onClick={onBack} className="p-2 bg-slate-100 rounded-full dark:bg-slate-800"><span className="material-symbols-outlined">close</span></button>
       </div>
 
       <div className="flex justify-center gap-2 bg-white dark:bg-slate-900 p-2.5 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200/60 dark:border-slate-800/80 overflow-x-auto">
@@ -1067,7 +1104,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 />
                 <div>
                    <h2 className="text-xl font-bold text-slate-800 dark:text-white">Resumo Executivo Diário</h2>
-                   <p className="text-xs text-slate-500">Métricas consolidadas por SVC (Fixa vs Spot)</p>
+                   <p className="text-xs text-slate-500 dark:text-slate-400">Métricas consolidadas por SVC (Fixa vs Spot)</p>
                 </div>
              </div>
              <button 
@@ -1091,29 +1128,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           </div>
 
           {summaryLoading ? (
-             <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-slate-300 border-t-indigo-600 rounded-full animate-spin"></div></div>
+             <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-slate-300 border-t-indigo-600 rounded-full animate-spin dark:border-slate-600"></div></div>
           ) : (
-            <div id="export-summary-container" className="bg-slate-50 p-8 rounded-2xl border border-slate-200 min-w-[800px] shadow-sm">
-              <div className="text-center mb-8 border-b border-slate-200 pb-6">
-                 <h2 className="text-2xl font-black text-slate-800 uppercase tracking-widest">Resumo Operacional</h2>
-                 <p className="text-sm font-bold text-slate-500 mt-1">Data de Referência: {selectedDate.split('-').reverse().join('/')}</p>
+            <div id="export-summary-container" className="bg-slate-50 p-8 rounded-2xl border border-slate-200 min-w-[800px] shadow-sm dark:bg-slate-800/40 dark:border-slate-700">
+              <div className="text-center mb-8 border-b border-slate-200 pb-6 dark:border-slate-700">
+                 <h2 className="text-2xl font-black text-slate-800 uppercase tracking-widest dark:text-slate-200">Resumo Operacional</h2>
+                 <p className="text-sm font-bold text-slate-500 mt-1 dark:text-slate-400">Data de Referência: {selectedDate.split('-').reverse().join('/')}</p>
                  <div className="flex justify-center flex-wrap gap-6 mt-6">
                     <div className="px-6 py-3 bg-blue-100 text-blue-800 rounded-xl border border-blue-200 shadow-sm">
                        <span className="text-xs font-bold block uppercase tracking-wider mb-1">Total Ofertas (SPOT)</span>
                        <span className="text-3xl font-black">{summaryData.reduce((acc, c) => acc + c.offerSpot, 0)}</span>
                     </div>
-                    <div className="px-6 py-3 bg-emerald-100 text-emerald-800 rounded-xl border border-emerald-200 shadow-sm">
+                    <div className="px-6 py-3 bg-emerald-100 text-emerald-800 rounded-xl border border-emerald-200 shadow-sm dark:border-emerald-800/50">
                        <span className="text-xs font-bold block uppercase tracking-wider mb-1">Total Rodou (SPOT)</span>
                        <span className="text-3xl font-black">{summaryData.reduce((acc, c) => acc + c.ranSpot, 0)}</span>
                     </div>
-                    <div className="px-6 py-3 bg-indigo-100 text-indigo-800 rounded-xl border border-indigo-200 shadow-sm">
+                    <div className="px-6 py-3 bg-indigo-100 text-indigo-800 rounded-xl border border-indigo-200 shadow-sm dark:border-indigo-800/50">
                        <span className="text-xs font-bold block uppercase tracking-wider mb-1">Frota Fixa Cadastrada</span>
                        <span className="text-3xl font-black">{summaryData.reduce((acc, c) => acc + c.fixedTotal, 0)}</span>
                     </div>
                  </div>
               </div>
               
-              <table className="w-full text-center text-sm whitespace-nowrap bg-white rounded-xl overflow-hidden shadow-sm border border-slate-300">
+              <table className="w-full text-center text-sm whitespace-nowrap bg-white rounded-xl overflow-hidden shadow-sm border border-slate-300 dark:bg-slate-900/80 dark:border-slate-600">
                  <thead className="bg-slate-800 text-slate-100 uppercase text-xs font-bold tracking-wider">
                     <tr>
                        <th className="px-5 py-4 text-center">SVC</th>
@@ -1141,20 +1178,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                        
                        return (
                        <tr key={row.svc} className={i % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/70 hover:bg-slate-50'}>
-                          <td className="px-5 py-3.5 text-center font-bold text-slate-800">{row.svc}</td>
+                          <td className="px-5 py-3.5 text-center font-bold text-slate-800 dark:text-slate-200">{row.svc}</td>
                           
-                          <td className="px-5 py-3.5 text-center font-bold text-slate-600 border-l border-slate-100/50 bg-slate-50">{row.offerSpot}</td>
-                          <td className="px-5 py-3.5 text-center font-black text-emerald-600 border-l border-slate-100/50 bg-emerald-50/20">
+                          <td className="px-5 py-3.5 text-center font-bold text-slate-600 border-l border-slate-100/50 bg-slate-50 dark:text-slate-300 dark:bg-slate-800/40">{row.offerSpot}</td>
+                          <td className="px-5 py-3.5 text-center font-black text-emerald-600 border-l border-slate-100/50 bg-emerald-50/20 dark:text-emerald-400">
                              {row.ranSpot} 
                              {spotDiff > 0 && <span className="text-[11px] text-rose-500 font-bold ml-1.5 align-text-top">(-{spotDiff})</span>}
                              {spotDiff < 0 && <span className="text-[11px] text-blue-500 font-bold ml-1.5 align-text-top">(+{Math.abs(spotDiff)})</span>}
                           </td>
-                          <td className="px-5 py-3.5 text-center font-bold text-amber-600 border-l border-slate-100/50 bg-amber-50/20">{spotAprov}%</td>
+                          <td className="px-5 py-3.5 text-center font-bold text-amber-600 border-l border-slate-100/50 bg-amber-50/20 dark:text-amber-400">{spotAprov}%</td>
                           
-                          <td className="px-5 py-3.5 text-center font-medium border-l-4 border-slate-300 bg-indigo-50/10">{row.fixedTotal}</td>
-                          <td className="px-5 py-3.5 text-center font-black text-emerald-600 border-l border-slate-100 bg-emerald-50/30">{row.fixedRan}</td>
-                          <td className="px-5 py-3.5 text-center font-black text-rose-500 border-l border-slate-100 bg-rose-50/30">{row.fixedIdle}</td>
-                          <td className="px-5 py-3.5 text-center font-bold text-amber-600 border-l border-slate-100 bg-amber-50/30">{fixaUtil}%</td>
+                          <td className="px-5 py-3.5 text-center font-medium border-l-4 border-slate-300 bg-indigo-50/10 dark:border-slate-600">{row.fixedTotal}</td>
+                          <td className="px-5 py-3.5 text-center font-black text-emerald-600 border-l border-slate-100 bg-emerald-50/30 dark:text-emerald-400 dark:border-slate-800">{row.fixedRan}</td>
+                          <td className="px-5 py-3.5 text-center font-black text-rose-500 border-l border-slate-100 bg-rose-50/30 dark:border-slate-800">{row.fixedIdle}</td>
+                          <td className="px-5 py-3.5 text-center font-bold text-amber-600 border-l border-slate-100 bg-amber-50/30 dark:text-amber-400 dark:border-slate-800">{fixaUtil}%</td>
                        </tr>
                     )})}
                  </tbody>
@@ -1191,7 +1228,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     })()}
                  </tfoot>
               </table>
-              <div className="mt-6 flex items-center gap-2 justify-end opacity-40 text-slate-700">
+              <div className="mt-6 flex items-center gap-2 justify-end opacity-40 text-slate-700 dark:text-slate-300">
                  <span className="material-symbols-outlined text-[14px]">info</span>
                  <span className="text-[11px] font-bold uppercase tracking-widest leading-none">Exportação Gerada - Logística ML</span>
               </div>
@@ -1259,7 +1296,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               </div>
               <div>
                 <h3 className="font-black text-lg text-slate-800 dark:text-slate-100">1. Alimentar Histórico de Rotas (Planilha)</h3>
-                <p className="text-xs text-slate-500">Faça o upload da rota diária para salvar de forma permanente no banco de dados.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Faça o upload da rota diária para salvar de forma permanente no banco de dados.</p>
               </div>
             </div>
 
@@ -1272,7 +1309,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
             <div className="w-full">
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Arquivo CSV de Rotas (com coluna "Data" no formato DD/MM/AAAA)</label>
-              <input type="file" accept=".csv" onChange={handleFileUpload} onClick={() => setImportSuccess(false)} className="w-full text-sm text-slate-500 file:mr-4 file:py-3.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 focus:outline-none" />
+              <input type="file" accept=".csv" onChange={handleFileUpload} onClick={() => setImportSuccess(false)} className="w-full text-sm text-slate-500 file:mr-4 file:py-3.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 focus:outline-none dark:text-slate-400" />
             </div>
 
             {csvHeaders.length > 0 && (
@@ -1301,7 +1338,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               </div>
               <div>
                 <h3 className="font-black text-lg text-slate-800 dark:text-slate-100">2. Visualizar Rotas do Dia</h3>
-                <p className="text-xs text-slate-500">Veja as rotas salvas no banco de dados para a data informada.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Veja as rotas salvas no banco de dados para a data informada.</p>
               </div>
             </div>
 
@@ -1338,7 +1375,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             </div>
             <div>
               <h3 className="font-black text-lg text-slate-800 dark:text-slate-100">Exportar Dados (Período)</h3>
-              <p className="text-xs text-slate-500">Exporte históricos de frota, oferta e capacidade em CSV aplicando filtros de data.</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Exporte históricos de frota, oferta e capacidade em CSV aplicando filtros de data.</p>
             </div>
           </div>
 
@@ -1408,7 +1445,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
-                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_content</span>
+                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none dark:text-slate-400">expand_content</span>
                   </div>
                 </div>
                 <div>
@@ -1420,7 +1457,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                         <option key={s.id} value={s.name.toUpperCase()}>{s.name.toUpperCase()}</option>
                       ))}
                     </select>
-                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">minor_crash</span>
+                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none dark:text-slate-400">minor_crash</span>
                   </div>
                 </div>
                 
@@ -1478,7 +1515,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                              <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm tracking-wide">OFERTA TOTAL</h3>
                           </div>
                           <p className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white relative tracking-tight">{dirTotalOffer.toLocaleString('pt-BR')}</p>
-                          <p className="text-xs text-slate-400 mt-2 font-medium">Capacidade Garantida (SPOT)</p>
+                          <p className="text-xs text-slate-400 mt-2 font-medium dark:text-slate-400">Capacidade Garantida (SPOT)</p>
                        </div>
                        
                        <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-6 group">
@@ -1515,7 +1552,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                           </div>
                           <div className="flex items-baseline gap-1">
                              <p className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white relative tracking-tight">{dirPercentage}</p>
-                             <p className="text-2xl font-bold text-slate-400">%</p>
+                             <p className="text-2xl font-bold text-slate-400 dark:text-slate-400">%</p>
                           </div>
                           {/* Progress bar visual */}
                           <div className="w-full h-2 bg-slate-100 dark:bg-slate-700 rounded-full mt-3 overflow-hidden">
@@ -1528,7 +1565,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm w-full">
                        <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
                          <h3 className="font-bold text-slate-700 dark:text-slate-300">Detalhamento dos Filtros</h3>
-                         <span className="text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3 py-1 rounded-full text-slate-500">{displayData.length} registros</span>
+                         <span className="text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3 py-1 rounded-full text-slate-500 dark:text-slate-400">{displayData.length} registros</span>
                        </div>
                        <div className="overflow-x-auto w-full">
                          <table className="w-full text-sm text-left">
@@ -1546,7 +1583,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                              {displayData.length === 0 ? (
                                <tr>
-                                 <td colSpan={7} className="px-6 py-8 text-center text-slate-400 font-medium">Nenhum cruzamento encontrado para os filtros aplicados.</td>
+                                 <td colSpan={7} className="px-6 py-8 text-center text-slate-400 font-medium dark:text-slate-400">Nenhum cruzamento encontrado para os filtros aplicados.</td>
                                </tr>
                              ) : (
                                displayData.sort((a,b) => b.date.localeCompare(a.date)).map((item, idx) => {
@@ -1555,7 +1592,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                    <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors">
                                      <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-600 dark:text-slate-300 text-xs">{item.date.split('-').reverse().join('/')}</td>
                                      <td className="px-6 py-4 whitespace-nowrap font-bold text-slate-800 dark:text-slate-200">{item.svc}</td>
-                                     <td className="px-6 py-4 whitespace-nowrap text-xs font-semibold text-slate-500 bg-slate-50 dark:bg-slate-900 rounded-md m-2 inline-block px-2 py-1 border border-slate-100 dark:border-slate-700 mt-2.5">{item.modal}</td>
+                                     <td className="px-6 py-4 whitespace-nowrap text-xs font-semibold text-slate-500 bg-slate-50 dark:bg-slate-900 rounded-md m-2 inline-block px-2 py-1 border border-slate-100 dark:border-slate-700 mt-2.5 dark:text-slate-400">{item.modal}</td>
                                      <td className="px-6 py-4 text-center bg-blue-50/30 dark:bg-blue-500/5">
                                         {editingOfferKey === `${item.date}|${item.svc}|${item.modal}` ? (
                                            <div className="flex items-center justify-center gap-1">
@@ -1573,7 +1610,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                                }}
                                              />
                                              <button disabled={isSavingOffer} onClick={() => handleSaveOffer(item.date, item.svc, item.modal)} className="text-emerald-500 hover:text-emerald-600 disabled:opacity-50 flex items-center justify-center p-1"><span className="material-symbols-outlined text-[16px]">check</span></button>
-                                             <button disabled={isSavingOffer} onClick={() => setEditingOfferKey(null)} className="text-slate-400 hover:text-slate-600 disabled:opacity-50 flex items-center justify-center p-1"><span className="material-symbols-outlined text-[16px]">close</span></button>
+                                             <button disabled={isSavingOffer} onClick={() => setEditingOfferKey(null)} className="text-slate-400 hover:text-slate-600 disabled:opacity-50 flex items-center justify-center p-1 dark:text-slate-400"><span className="material-symbols-outlined text-[16px]">close</span></button>
                                            </div>
                                         ) : (
                                            <div className="flex items-center justify-center gap-2 group cursor-pointer" onClick={() => { if(!dirConsolidateModals) { setEditingOfferKey(`${item.date}|${item.svc}|${item.modal}`); setEditingOfferValue(item.offer); } }} title={dirConsolidateModals ? "Desative a consolidação para editar" : "Clique para editar"}>
@@ -1609,16 +1646,39 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       {loading && activeTab !== 'audit' && activeTab !== 'export' ? (
         <div className="flex flex-col items-center justify-center py-16 space-y-4">
           <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
-          <p className="text-sm font-semibold text-slate-500 animate-pulse">Sincronizando dados...</p>
+          <p className="text-sm font-semibold text-slate-500 animate-pulse dark:text-slate-400">Sincronizando dados...</p>
         </div>
       ) : activeTab === 'daily' ? (
         <div className="space-y-6">
           {/* Missing SVCs Section */}
           <section className="space-y-4">
-            <h3 className="flex items-center gap-2 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider px-1">
-              <span className="material-symbols-outlined text-[18px] text-red-500">warning</span>
-              Faltam Responder ({missingSvcs.length})
-            </h3>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-1 gap-3">
+              <h3 className="flex items-center gap-2 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <span className="material-symbols-outlined text-[18px] text-red-500">warning</span>
+                Faltam Responder ({missingSvcs.length})
+              </h3>
+              
+              {missingSvcs.length > 0 && (
+                <button
+                  onClick={() => {
+                     const svcsStr = missingSvcs.map(s => s.name).join(', ');
+                     const dataFormatada = selectedDate.split('-').reverse().slice(0, 2).join('/');
+                     const mensagem = `🚨 *Aviso de Pendência - Relatório Diário*\n\nOlá equipe! O relatório do dia *${dataFormatada}* está em fechamento.\n\nAinda estão faltando os registros das seguintes bases:\n${svcsStr}\n\nPor favor, confirmem o preenchimento o quanto antes para podermos fechar os números do dia. Obrigado!`;
+                     
+                     // wa.me without a number opens the WhatsApp web/app and prompts to "Select your contact/group"
+                     const url = `https://wa.me/?text=${encodeURIComponent(mensagem)}`;
+                     window.open(url, '_blank');
+                  }}
+                  className="px-4 py-2 bg-[#25D366] hover:bg-[#1DA851] text-white text-xs font-bold rounded-xl flex items-center gap-2 active:scale-95 transition-all shadow-md shadow-green-500/20"
+                >
+                  <img 
+                      src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='white'%3E%3Cpath d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z'/%3E%3C/svg%3E" 
+                      alt="WhatsApp" 
+                  />
+                  Cobrar Faltantes no WhatsApp
+                </button>
+              )}
+            </div>
 
             {missingSvcs.length === 0 ? (
               <div className="p-5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded-xl border border-emerald-200/60 dark:border-emerald-800/50 text-sm font-medium flex items-center gap-3 shadow-sm">
@@ -1645,7 +1705,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             </h3>
 
             {reports.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-16 text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-800/80 rounded-3xl bg-white/50 dark:bg-slate-900/50">
+              <div className="flex flex-col items-center justify-center p-16 text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-800/80 rounded-3xl bg-white/50 dark:bg-slate-900/50 dark:text-slate-400">
                 <span className="material-symbols-outlined text-5xl mb-4 text-slate-300 dark:text-slate-700">inbox</span>
                 <p className="text-base font-medium">Nenhum relatório logado neste dia.</p>
               </div>
@@ -1661,7 +1721,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                         </div>
                         <span className="truncate">{report.svc_id}</span>
                       </h4>
-                      <span className="text-[11px] uppercase font-bold bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg text-slate-500 border border-slate-200/50 dark:border-slate-700/50">
+                      <span className="text-[11px] uppercase font-bold bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg text-slate-500 border border-slate-200/50 dark:border-slate-700/50 dark:text-slate-400">
                         {report.acceptance_type}
                       </span>
                     </div>
@@ -1681,7 +1741,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                           </div>
                         );
                       }) : (
-                        <p className="text-slate-400 italic text-sm text-center py-6">Nenhum histórico detalhado.</p>
+                        <p className="text-slate-400 italic text-sm text-center py-6 dark:text-slate-400">Nenhum histórico detalhado.</p>
                       )}
                     </div>
                   </div>
@@ -1714,7 +1774,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                              <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm tracking-wide">FROTA TOTAL</h3>
                           </div>
                           <p className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white relative tracking-tight">{sumTotalPlates.toLocaleString('pt-BR')}</p>
-                          <p className="text-xs text-slate-400 mt-2 font-medium">Equivalente à Frota Total Fixa</p>
+                          <p className="text-xs text-slate-400 mt-2 font-medium dark:text-slate-400">Equivalente à Frota Total Fixa</p>
                        </div>
                        
                        <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-6 group">
@@ -1751,7 +1811,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                           </div>
                           <div className="flex items-baseline gap-1">
                              <p className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white relative tracking-tight">{percReal}</p>
-                             <p className="text-2xl font-bold text-slate-400">%</p>
+                             <p className="text-2xl font-bold text-slate-400 dark:text-slate-400">%</p>
                           </div>
                           <div className="w-full h-2 bg-slate-100 dark:bg-slate-700 rounded-full mt-3 overflow-hidden">
                              <div className={`h-full ${sumRanAmount >= sumAvailable ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, Number(percReal))}%` }}></div>
@@ -1783,7 +1843,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                       {utilizationData.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="px-5 py-8 text-center text-slate-400 italic">Nenhum dado encontrado no período.</td>
+                          <td colSpan={7} className="px-5 py-8 text-center text-slate-400 italic dark:text-slate-400">Nenhum dado encontrado no período.</td>
                         </tr>
                       ) : (
                         utilizationData.map((row, idx) => (
@@ -1832,7 +1892,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                       {utilizationData.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-5 py-8 text-center text-slate-400 italic">Nenhum dado encontrado no período.</td>
+                          <td colSpan={6} className="px-5 py-8 text-center text-slate-400 italic dark:text-slate-400">Nenhum dado encontrado no período.</td>
                         </tr>
                       ) : (
                         utilizationData.map((row, idx) => (
@@ -1973,7 +2033,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                          style={{ height: `${Math.max(percHeight, 2)}%` }} // At least 2% to show the bar
                          title={`${stat.idle} paradas em ${dayStr}`}
                        ></div>
-                       <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap rotate-[-45deg] origin-top-left translate-y-2 translate-x-1">
+                       <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap rotate-[-45deg] origin-top-left translate-y-2 translate-x-1 dark:text-slate-400">
                          {dayStr}
                        </span>
                      </div>
@@ -2052,7 +2112,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                        <span className="material-symbols-outlined text-blue-500">app_registration</span>
                        Visão Placa a Placa (Mercado Livre)
                      </h3>
-                     <p className="text-xs text-slate-500 mt-1">Validação de carregamento e justificativas baseada na rota do dia.</p>
+                     <p className="text-xs text-slate-500 mt-1 dark:text-slate-400">Validação de carregamento e justificativas baseada na rota do dia.</p>
                    </div>
                    <button onClick={handleExportDetailedPlate} className="py-2.5 px-5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 text-sm shadow-md transition-all active:scale-95">
                      <span className="material-symbols-outlined text-[18px]">download</span>
@@ -2062,7 +2122,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Filtrar por Placa</label>
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Filtrar por Placa</label>
                       <input 
                         type="text" 
                         value={detPlateFilter} 
@@ -2072,7 +2132,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Filtrar por SVC</label>
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Filtrar por SVC</label>
                       <div className="relative">
                         <select value={detSvcFilter} onChange={e => setDetSvcFilter(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-blue-500 shadow-sm appearance-none">
                           <option value="">Todos os SVCs</option>
@@ -2080,11 +2140,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                              <option key={s as string} value={s as string}>{s as string}</option>
                           ))}
                         </select>
-                        <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_content</span>
+                        <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none dark:text-slate-400">expand_content</span>
                       </div>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Status de Carregamento</label>
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Status de Carregamento</label>
                       <div className="flex gap-2">
                         <button onClick={() => setDetStatusFilter('all')} className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${detStatusFilter === 'all' ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Todos</button>
                         <button onClick={() => setDetStatusFilter('ran')} className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${detStatusFilter === 'ran' ? 'bg-emerald-500 text-white shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Carregou (1)</button>
@@ -2092,7 +2152,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                       </div>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Filtro de Anomalias</label>
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Filtro de Anomalias</label>
                       <div className="flex gap-2">
                         <button onClick={() => setDetAnomalyFilter('all')} className={`flex-1 py-1.5 sm:py-2.5 text-[10px] sm:text-xs font-bold rounded-xl transition-all ${detAnomalyFilter === 'all' ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Todas</button>
                         <button onClick={() => setDetAnomalyFilter('divergent')} className={`flex-1 py-1.5 sm:py-2.5 text-[10px] sm:text-xs font-bold rounded-xl transition-all ${detAnomalyFilter === 'divergent' ? 'bg-amber-500 text-white shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Divergências</button>
@@ -2125,7 +2185,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                         {finalDisplayedDetails.length === 0 ? (
                            <tr>
-                              <td colSpan={5} className="px-5 py-12 text-center text-slate-400 font-medium">Nenhum registro encontrado para os filtros aplicados.</td>
+                              <td colSpan={5} className="px-5 py-12 text-center text-slate-400 font-medium dark:text-slate-400">Nenhum registro encontrado para os filtros aplicados.</td>
                            </tr>
                         ) : (
                            finalDisplayedDetails.map((item, idx) => (
@@ -2177,7 +2237,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                         {item.reportId && (
                                            <button 
                                               onClick={() => { setEditingPlateKey(`${item.date}|${item.plate}`); setEditingPlateJust(item.reason); }} 
-                                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-blue-500 transition-opacity ml-2 shrink-0 bg-white dark:bg-slate-800 rounded shadow-sm border border-slate-200 dark:border-slate-700 flex items-center justify-center"
+                                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-blue-500 transition-opacity ml-2 shrink-0 bg-white dark:bg-slate-800 rounded shadow-sm border border-slate-200 dark:border-slate-700 flex items-center justify-center dark:text-slate-400"
                                               title="Editar Justificativa"
                                            >
                                              <span className="material-symbols-outlined text-[14px]">edit</span>
@@ -2230,7 +2290,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                      <span className="material-symbols-outlined text-indigo-500">calendar_month</span>
                      Visão Semanal Placa a Placa (DOM a SAB)
                    </h3>
-                   <p className="text-xs text-slate-500 mt-1">Acompanhamento de faltas e dias carregados por carro ao longo da semana.</p>
+                   <p className="text-xs text-slate-500 mt-1 dark:text-slate-400">Acompanhamento de faltas e dias carregados por carro ao longo da semana.</p>
                  </div>
                  <button onClick={handleExportWeeklyCSV} className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 text-sm shadow-md transition-all active:scale-95">
                    <span className="material-symbols-outlined text-[18px]">download</span>
@@ -2240,7 +2300,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Filtro de Semana do Ano</label>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Filtro de Semana do Ano</label>
                     <input 
                       type="week" 
                       value={weeklyWeekVal} 
@@ -2259,7 +2319,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Filtrar por SVC</label>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Filtrar por SVC</label>
                     <div className="relative">
                       <select value={weeklySvcFilter} onChange={e => setWeeklySvcFilter(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-indigo-500 shadow-sm appearance-none">
                         <option value="">Geral / Todos os SVCs</option>
@@ -2267,13 +2327,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                            <option key={s} value={s}>{s}</option>
                         ))}
                       </select>
-                      <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_content</span>
+                      <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none dark:text-slate-400">expand_content</span>
                     </div>
                   </div>
                </div>
 
                {weeklyLoading ? (
-                 <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-slate-300 border-t-indigo-600 rounded-full animate-spin"></div></div>
+                 <div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-slate-300 border-t-indigo-600 rounded-full animate-spin dark:border-slate-600"></div></div>
                ) : (
                  <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-xl max-h-[600px] overflow-y-auto custom-scrollbar">
                    <table className="w-full text-sm text-center relative border-collapse">
@@ -2282,7 +2342,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                          <th className="px-3 py-3 w-40 sticky left-0 z-30 bg-slate-900 border-r border-slate-700 text-left">Placa (SVC)</th>
                          {weeklyDays.map(d => (
                              <th key={d.date} className="px-3 py-3 border-r border-slate-700 min-w-[90px]">
-                                 <div className="flex flex-col"><span>{d.dayName}</span><span className="text-[10px] text-slate-400 font-normal">{d.shortDate}</span></div>
+                                 <div className="flex flex-col"><span>{d.dayName}</span><span className="text-[10px] text-slate-400 font-normal dark:text-slate-400">{d.shortDate}</span></div>
                              </th>
                          ))}
                          <th className="px-3 py-3 min-w-[100px] bg-slate-700/80 text-center">Utilização<br/>Pura (1/dia)</th>
@@ -2292,7 +2352,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                      <tbody className="divide-y divide-slate-200/50 dark:divide-slate-700/50">
                         {weeklyData.length === 0 ? (
                            <tr>
-                              <td colSpan={10} className="px-5 py-12 text-center text-slate-400 font-medium bg-white dark:bg-slate-900">Nenhum veículo fixo encontrado.</td>
+                              <td colSpan={10} className="px-5 py-12 text-center text-slate-400 font-medium bg-white dark:bg-slate-900 dark:text-slate-400">Nenhum veículo fixo encontrado.</td>
                            </tr>
                         ) : (
                            weeklyData.map((row, idx) => (
@@ -2300,7 +2360,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                  <td className="px-3 py-2.5 font-bold text-slate-800 dark:text-slate-200 sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/80 border-r border-slate-300 dark:border-slate-700 text-left">
                                      <div className="flex flex-col">
                                        <span className="font-mono text-[13px]">{row.plate}</span>
-                                       <span className="text-[10px] text-slate-400 font-normal">{row.svc}</span>
+                                       <span className="text-[10px] text-slate-400 font-normal dark:text-slate-400">{row.svc}</span>
                                      </div>
                                  </td>
                                  {weeklyDays.map(d => {
@@ -2344,7 +2404,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                  <td className="px-3 py-2.5 font-bold text-slate-700 dark:text-slate-300 bg-indigo-50/20 dark:bg-indigo-900/10 border-l border-indigo-200 dark:border-indigo-800/40 text-center">
                                      <div className="flex flex-col items-center">
                                         <span className={`text-[13px] px-2 py-0.5 rounded-md ${row.utilizationMeliPerc >= 100 ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>{row.utilizationMeliPerc.toFixed(1)}%</span>
-                                        <span className="text-[9px] text-slate-400 font-normal mt-0.5">{row.daysRan}d / 7</span>
+                                        <span className="text-[9px] text-slate-400 font-normal mt-0.5 dark:text-slate-400">{row.daysRan}d / 7</span>
                                      </div>
                                  </td>
                               </tr>
@@ -2366,7 +2426,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                            <td key={d.date} className="px-3 py-3 border-r border-slate-600">
                                               <div className="flex flex-col items-center">
                                                  <span className={`${Number(px) >= 80 ? 'text-emerald-300' : 'text-amber-300'} text-[13px]`}>{px}%</span>
-                                                 <span className="text-[9px] text-slate-400 font-normal">{stat.fixedRan}/{stat.fixedTotal}</span>
+                                                 <span className="text-[9px] text-slate-400 font-normal dark:text-slate-400">{stat.fixedRan}/{stat.fixedTotal}</span>
                                               </div>
                                            </td>
                                         );
@@ -2392,17 +2452,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
              <div className="bg-emerald-50 dark:bg-emerald-900/20 p-5 rounded-2xl border border-emerald-200 dark:border-emerald-800">
-               <span className="text-emerald-600 block text-sm font-bold mb-1">Total Confirmado (Match)</span>
+               <span className="text-emerald-600 block text-sm font-bold mb-1 dark:text-emerald-400">Total Confirmado (Match)</span>
                <span className="text-3xl font-black text-emerald-700 dark:text-emerald-400">{auditResults.matchCount}</span>
                <p className="text-xs text-emerald-600/70 mt-1">Reportou "Rodou" e Planilha confirma.</p>
              </div>
              <div className="bg-red-50 dark:bg-red-900/20 p-5 rounded-2xl border border-red-200 dark:border-red-800">
-               <span className="text-red-600 block text-sm font-bold mb-1">Falsos Positivos</span>
+               <span className="text-red-600 block text-sm font-bold mb-1 dark:text-red-400">Falsos Positivos</span>
                <span className="text-3xl font-black text-red-700 dark:text-red-400">{auditResults.falsePositives.length}</span>
                <p className="text-xs text-red-600/70 mt-1">Reportou "Rodou", mas não está na Planilha.</p>
              </div>
              <div className="bg-amber-50 dark:bg-amber-900/20 p-5 rounded-2xl border border-amber-200 dark:border-amber-800">
-               <span className="text-amber-600 block text-sm font-bold mb-1">Falsos Negativos / Ausentes</span>
+               <span className="text-amber-600 block text-sm font-bold mb-1 dark:text-amber-400">Falsos Negativos / Ausentes</span>
                <span className="text-3xl font-black text-amber-700 dark:text-amber-400">{auditResults.falseNegatives.length}</span>
                <p className="text-xs text-amber-600/70 mt-1">Tem Rota na planilha, mas reportou folga/manut.</p>
              </div>
@@ -2423,7 +2483,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                        <span className="text-xs bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md text-slate-600 dark:text-slate-400">{item.svc}</span>
                      </li>
                    ))}
-                   {auditResults.falsePositives.length === 0 && <p className="text-sm p-8 text-center text-slate-400">Nenhum falso positivo encontrado.</p>}
+                   {auditResults.falsePositives.length === 0 && <p className="text-sm p-8 text-center text-slate-400 dark:text-slate-400">Nenhum falso positivo encontrado.</p>}
                  </ul>
                </div>
              </div>
@@ -2445,7 +2505,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                        <span className="text-xs bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md text-slate-600 dark:text-slate-400">{item.svc}</span>
                      </li>
                    ))}
-                   {auditResults.falseNegatives.length === 0 && <p className="text-sm p-8 text-center text-slate-400">Nenhum falso negativo encontrado.</p>}
+                   {auditResults.falseNegatives.length === 0 && <p className="text-sm p-8 text-center text-slate-400 dark:text-slate-400">Nenhum falso negativo encontrado.</p>}
                  </ul>
                </div>
              </div>
