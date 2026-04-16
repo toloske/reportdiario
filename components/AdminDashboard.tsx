@@ -2190,7 +2190,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                         ) : (
                            finalDisplayedDetails.map((item, idx) => (
                               <tr key={idx} className={`transition-colors ${(!item.didRun && item.reason && item.reason.toUpperCase().includes('RODOU')) ? 'bg-red-100 hover:bg-red-200 dark:bg-rose-900/30 dark:hover:bg-rose-900/50' : 'hover:bg-slate-50 dark:hover:bg-slate-800/80'}`}>
-                                 <td className="px-5 py-3.5 font-medium text-slate-600 dark:text-slate-300">{item.date.split('-').reverse().join('/')}</td>
+                                 <td className="px-5 py-3.5 font-medium text-slate-600 dark:text-slate-300">
+                                   <div className="flex flex-col">
+                                     <span>{item.date.split('-').reverse().join('/')}</span>
+                                     <span className="text-[11px] font-bold text-slate-400 capitalize mt-0.5">
+                                       {(() => {
+                                          const dParts = item.date.split('-');
+                                          const dObj = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]));
+                                          return ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"][dObj.getDay()];
+                                       })()}
+                                     </span>
+                                   </div>
+                                 </td>
                                  <td className="px-5 py-3.5 font-bold text-slate-800 dark:text-slate-200">{item.svc}</td>
                                  <td className="px-5 py-3.5"><span className="font-mono font-bold bg-slate-100 dark:bg-slate-900 rounded px-2.5 py-1 border border-slate-200 dark:border-slate-800">{item.plate}</span></td>
                                  <td className="px-5 py-3.5 text-center">
@@ -2364,15 +2375,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
                                return (
                                <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
-                                  <td className="px-3 py-2.5 font-bold text-slate-800 dark:text-slate-200 sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/80 border-r border-slate-300 dark:border-slate-700 text-left">
-                                      <div className="flex flex-col">
+                                  <td className="px-3 py-2.5 font-bold text-slate-900 dark:text-white sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/80 border-r border-slate-300 dark:border-slate-700 text-left">
+                                      <div className="flex flex-col gap-0.5">
                                         <div className="flex items-center justify-between">
-                                            <span className="font-mono text-[13px]">{row.plate}</span>
+                                            <span className="font-mono text-sm font-black tracking-wide">{row.plate}</span>
                                             {countFaltas > 1 && (
-                                                <span title={`${countFaltas} faltas ou pendentes nesta semana`} className="material-symbols-outlined text-[14px] text-amber-500 cursor-help ml-1 p-0.5 bg-amber-50 dark:bg-amber-500/10 rounded-full">warning</span>
+                                                <span title={`${countFaltas} faltas ou pendentes nesta semana`} className="material-symbols-outlined text-[16px] text-amber-500 cursor-help ml-1 p-0.5 bg-amber-50 dark:bg-amber-500/10 rounded-full font-bold">warning</span>
                                             )}
                                         </div>
-                                        <span className="text-[10px] text-slate-400 font-normal dark:text-slate-400">{row.svc}</span>
+                                        <span className="text-xs text-slate-500 font-bold dark:text-slate-300">{row.svc}</span>
                                       </div>
                                   </td>
                                   {weeklyDays.map(d => {
@@ -2381,42 +2392,42 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                      
                                      const isFuture = d.date > getLocalDateString();
                                      let bgClass = "bg-slate-100 dark:bg-slate-800/50";
-                                     let content = <span className="material-symbols-outlined text-[16px] text-slate-300">-</span>;
+                                     let content = <span className="material-symbols-outlined text-[18px] text-slate-400 font-bold">-</span>;
                                      let title = "Sem dado";
 
                                      if (cellData.didRun) {
                                          bgClass = "bg-emerald-100/60 dark:bg-emerald-900/20";
-                                         content = <span className="material-symbols-outlined text-[18px] text-emerald-600 dark:text-emerald-400">check_circle</span>;
+                                         content = <span className="material-symbols-outlined text-[20px] text-emerald-600 dark:text-emerald-400 font-bold">check_circle</span>;
                                          title = "RODOU";
                                      } else if (!cellData.didRun && cellData.reason && cellData.reason !== 'Sem justificativa preenchida') {
                                          bgClass = "bg-rose-100/60 dark:bg-rose-900/20";
-                                         content = <span className="material-symbols-outlined text-[18px] text-rose-500">cancel</span>;
+                                         content = <span className="material-symbols-outlined text-[20px] text-rose-500 dark:text-rose-400 font-bold">cancel</span>;
                                          title = cellData.reason;
                                      } else if (!isFuture && !cellData.didRun) {
                                          bgClass = "bg-amber-100/60 dark:bg-amber-900/20";
-                                         content = <span className="material-symbols-outlined text-[18px] text-amber-500 outline-none">help</span>;
+                                         content = <span className="material-symbols-outlined text-[20px] text-amber-500 dark:text-amber-400 font-bold outline-none">help</span>;
                                          title = "Faltou (Sem Justif)";
                                      }
                                      return (
-                                        <td key={d.date} className={`relative group/cell border-r border-slate-200/50 dark:border-slate-800 cursor-help ${bgClass} transition hover:opacity-80`}>
+                                        <td key={d.date} className={`relative group/cell border-r border-slate-200/50 dark:border-slate-800 cursor-help ${bgClass} transition hover:opacity-90 hover:z-50`}>
                                             <div className="flex items-center justify-center p-2.5 w-full h-full">
                                                {content}
                                             </div>
-                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 hidden group-hover/cell:flex bg-slate-800 text-white text-[11px] font-medium px-3 py-1.5 rounded shadow-xl pointer-events-none after:content-[''] after:absolute after:-bottom-1 after:left-1/2 after:-translate-x-1/2 after:border-l-4 after:border-r-4 after:border-t-4 after:border-transparent after:border-t-slate-800 max-w-[220px] whitespace-normal text-center leading-tight">
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-[999] hidden group-hover/cell:flex bg-slate-900 text-white text-[12px] font-bold px-3.5 py-2 rounded-lg shadow-2xl pointer-events-none after:content-[''] after:absolute after:-bottom-1.5 after:left-1/2 after:-translate-x-1/2 after:border-l-[6px] after:border-r-[6px] after:border-t-[6px] after:border-transparent after:border-t-slate-900 max-w-[240px] whitespace-normal text-center leading-tight">
                                                 {title}
                                             </div>
                                         </td>
                                      );
                                  })}
-                                 <td className="px-3 py-2.5 font-bold text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 border-r border-slate-200 dark:border-slate-700 text-center">
+                                 <td className="px-3 py-2.5 font-bold text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-800/50 border-r border-slate-200 dark:border-slate-700 text-center">
                                      <div className="flex flex-col items-center">
-                                        <span className={`text-[13px] px-2 py-0.5 rounded-md ${row.utilizationPuraPerc >= 85 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>{row.utilizationPuraPerc.toFixed(1)}%</span>
+                                        <span className={`text-sm font-black px-2.5 py-1 rounded-md ${row.utilizationPuraPerc >= 85 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200'}`}>{row.utilizationPuraPerc.toFixed(1)}%</span>
                                      </div>
                                  </td>
-                                 <td className="px-3 py-2.5 font-bold text-slate-700 dark:text-slate-300 bg-indigo-50/20 dark:bg-indigo-900/10 border-l border-indigo-200 dark:border-indigo-800/40 text-center">
+                                 <td className="px-3 py-2.5 font-bold text-slate-800 dark:text-slate-200 bg-indigo-50/20 dark:bg-indigo-900/10 border-l border-indigo-200 dark:border-indigo-800/40 text-center">
                                      <div className="flex flex-col items-center">
-                                        <span className={`text-[13px] px-2 py-0.5 rounded-md ${row.utilizationMeliPerc >= 100 ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>{row.utilizationMeliPerc.toFixed(1)}%</span>
-                                        <span className="text-[9px] text-slate-400 font-normal mt-0.5 dark:text-slate-400">{row.daysRan}d / 7</span>
+                                        <span className={`text-sm font-black px-2.5 py-1 rounded-md ${row.utilizationMeliPerc >= 100 ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-300' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200'}`}>{row.utilizationMeliPerc.toFixed(1)}%</span>
+                                        <span className="text-[10px] text-slate-500 font-bold mt-1 dark:text-slate-400">{row.daysRan}d / 7</span>
                                      </div>
                                  </td>
                               </tr>
@@ -2459,7 +2470,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                  </div>
                )}
             </div>
-          )})()}
+          );
+        })()}
         </div>
       ) : activeTab === 'audit' && auditResults && auditResults.dbRouteCount > 0 ? (
         <div className="space-y-6">

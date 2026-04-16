@@ -49,20 +49,10 @@ async function run() {
                      } else {
                          const yearSlice = parts[2].split(' ')[0];
                          year = yearSlice.length > 4 ? yearSlice.substring(0, 4) : yearSlice;
-                         if (parseInt(parts[1], 10) > 12) {
-                             month = parts[0]; day = parts[1];
-                         } else if (parseInt(parts[0], 10) > 12) {
-                             day = parts[0]; month = parts[1];
-                         } else {
-                             // Ambiguous! Assume MM/DD se parts[0] n tem zero na frente e é o padrão de export desse arquivo
-                             // Contudo, muitas rotas br são DD/MM.
-                             // O script observou "1/14/2026" com tamanho 1 para month.
-                             if (parts[0].length === 1 && parts[1].length === 2 && parts[0] > 0) {
-                                 month = parts[0]; day = parts[1];
-                             } else {
-                                 day = parts[0]; month = parts[1];
-                             }
-                         }
+                         
+                         // Default assume MM/DD/YYYY given Mercado Livre's export format
+                         month = parts[0]; 
+                         day = parts[1];
                      }
                      if (parseInt(month, 10) > 12) { const temp = month; month = day; day = temp; }
                      formattedDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
