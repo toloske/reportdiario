@@ -1027,7 +1027,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         // Helper universal para qualquer formato de data → YYYY-MM-DD
         const parseDate = (raw: string): string => {
           if (!raw) return '';
-          const cleaned = raw.trim().split(' ')[0]; // remove hora se houver
+          const trimmed = raw.trim();
+
+          // Formato por extenso em português: "16 de abr. de 2026" ou "16 de abril de 2026"
+          const ptMonths: Record<string, string> = {
+            'jan': '01', 'fev': '02', 'mar': '03', 'abr': '04',
+            'mai': '05', 'jun': '06', 'jul': '07', 'ago': '08',
+            'set': '09', 'out': '10', 'nov': '11', 'dez': '12',
+            'janeiro': '01', 'fevereiro': '02', 'março': '03', 'marco': '03',
+            'abril': '04', 'maio': '05', 'junho': '06', 'julho': '07',
+            'agosto': '08', 'setembro': '09', 'outubro': '10',
+            'novembro': '11', 'dezembro': '12'
+          };
+          // Tenta match: "16 de abr. de 2026" ou "16 de abril de 2026"
+          const ptMatch = trimmed.match(/^(\d{1,2})\s+de\s+([a-záàãâéêíóôõúç\.]+)\s+de\s+(\d{4})/i);
+          if (ptMatch) {
+            const day = ptMatch[1].padStart(2, '0');
+            const monthKey = ptMatch[2].replace('.', '').toLowerCase();
+            const year = ptMatch[3];
+            const month = ptMonths[monthKey];
+            if (month) return `${year}-${month}-${day}`;
+          }
+
+          const cleaned = trimmed.split(' ')[0]; // remove hora se houver
           if (cleaned.includes('/')) {
             const parts = cleaned.split('/');
             if (parts.length === 2) {
@@ -1091,10 +1113,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           setImportSuccessDoubleCheck(true);
           setDoubleCheckError(null);
         } else {
+          // Debug: pega os valores brutos da primeira linha para diagnóstico
+          const firstRow = results.data[0] as any;
+          const debugPlaca = firstRow ? getCol(firstRow, 'Placa', 'Plate', 'placa', 'PLACA', 'plate') : 'N/A';
+          const debugData = firstRow ? (
+            getCol(firstRow, 'Data', 'Date', 'DATA', 'date') ||
+            getCol(firstRow, 'HORA_INICIO', 'Hora Inicio', 'hora_inicio') ||
+            getCol(firstRow, 'Primeira Entrega', 'Primeira entrega', 'Início', 'inicio')
+          ) : 'N/A';
+          const debugParsed = debugData ? parseDate(debugData) : 'N/A';
+          const debugAllValues = firstRow ? Object.entries(firstRow).slice(0, 5).map(([k,v]) => `${k}="${v}"`).join(' | ') : '';
           setDoubleCheckError(
-            `Nenhuma linha foi importada. Verifique se as colunas do CSV têm os nomes corretos.\n` +
-            `Colunas detectadas no arquivo: [${detectedHeaders.join(', ')}]\n` +
-            `Colunas esperadas: Placa (ou Plate) + Data (ou Date / HORA_INICIO).`
+            `Nenhuma linha foi importada.\n` +
+            `\n🔍 Diagnóstico da 1ª linha:\n` +
+            `  Placa encontrada: "${debugPlaca}"\n` +
+            `  Data encontrada: "${debugData}"\n` +
+            `  Data após parseDate: "${debugParsed}"\n` +
+            `  Primeiros valores: ${debugAllValues}\n` +
+            `\nColunas detectadas: [${detectedHeaders.join(', ')}]`
           );
         }
         setImportLoadingDoubleCheck(false);
