@@ -56,6 +56,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [csvFileDoubleCheck, setCsvFileDoubleCheck] = useState<File | null>(null);
   const [importLoadingDoubleCheck, setImportLoadingDoubleCheck] = useState(false);
   const [importSuccessDoubleCheck, setImportSuccessDoubleCheck] = useState(false);
+  const [doubleCheckError, setDoubleCheckError] = useState<string | null>(null);
+  const [doubleCheckHeadersDetected, setDoubleCheckHeadersDetected] = useState<string[]>([]);
 
   // States for Audit Query
   const [auditQueryDate, setAuditQueryDate] = useState<string>(getLocalDateString());
@@ -1006,22 +1008,43 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const handleImportRoutesDoubleCheck = async () => {
     if (!csvFileDoubleCheck) return;
     setImportLoadingDoubleCheck(true);
+    setDoubleCheckError(null);
+    setDoubleCheckHeadersDetected([]);
     Papa.parse(csvFileDoubleCheck, {
       header: true,
       skipEmptyLines: true,
       complete: async (results) => {
+        // Helper: busca coluna de forma case-insensitive e sem espaço
+        const getCol = (row: any, ...names: string[]): string => {
+          const rowKeys = Object.keys(row);
+          for (const name of names) {
+            const found = rowKeys.find(k => k.trim().toLowerCase() === name.trim().toLowerCase());
+            if (found && row[found] !== undefined && row[found] !== '') return String(row[found]);
+          }
+          return '';
+        };
+
+        const detectedHeaders = results.meta.fields || [];
+        setDoubleCheckHeadersDetected(detectedHeaders);
+
         const payloadToInsert: any[] = [];
         results.data.forEach((row: any, index: number) => {
-          let rawRouteId = row['Rotas'] || row['Route ID'] || row['route_id'] || row['route'] || row['Route'] || row['ROUTE ID'];
+          let rawRouteId = getCol(row, 'Rotas', 'Route ID', 'route_id', 'route', 'Route', 'ROUTE ID', 'routeid', 'id');
           if (!rawRouteId) {
              rawRouteId = `DBLCHK-${Date.now()}-${Math.floor(Math.random()*10000)}-${index}`;
           }
-          const rawPlate = row['Placa'] || row['Plate'] || row['placa'];
-          const rawDateStr = row['Data'] || row['Data '] || row['Date'] || '';
-          const primeiraEntrega = row['Primeira Entrega'] || row['Primeira entrega'] || row['Início'] || '';
+          const rawPlate = getCol(row, 'Placa', 'Plate', 'placa', 'PLACA', 'plate');
+          const rawDateStr = getCol(row, 'Data', 'Date', 'DATA', 'date');
+          const primeiraEntrega = getCol(row, 'Primeira Entrega', 'Primeira entrega', 'Início', 'inicio', 'Start Date', 'start_date');
           
           let targetDateStr = rawDateStr;
-          if (primeiraEntrega) {
+          if (!targetDateStr && primeiraEntrega) {
+             const datePart = primeiraEntrega.trim().split(' ')[0];
+             if (datePart.includes('/') || datePart.includes('-')) {
+                 targetDateStr = datePart;
+             }
+          } else if (targetDateStr && primeiraEntrega) {
+             // Prefer primeiraEntrega if rawDateStr is empty or primeiraEntrega is richer
              const datePart = primeiraEntrega.trim().split(' ')[0];
              if (datePart.includes('/') || datePart.includes('-')) {
                  targetDateStr = datePart;
@@ -1068,15 +1091,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                  route_id: String(rawRouteId).trim(),
                  date: formattedDate,
                  plate: String(rawPlate).replace(/[^A-Za-z0-9]/g, '').toUpperCase(),
-                 svc_id: String(row['SVC'] || '').trim(),
-                 vehicle_type: String(row['Tipo Veiculo'] || row['Veículo'] || row['Modal'] || '').trim(),
-                 xpt: String(row['XPT'] || '').trim()
+                 svc_id: getCol(row, 'SVC', 'svc', 'svc_id'),
+                 vehicle_type: getCol(row, 'Tipo Veiculo', 'Tipo Veículo', 'Veículo', 'Veiculo', 'Modal', 'vehicle_type', 'tipo'),
+                 xpt: getCol(row, 'XPT', 'xpt')
             });
           }
         });
         if (payloadToInsert.length > 0) {
           await saveDailyRoutes(payloadToInsert);
           setImportSuccessDoubleCheck(true);
+          setDoubleCheckError(null);
+        } else {
+          setDoubleCheckError(
+            `Nenhuma linha foi importada. Verifique se as colunas do CSV têm os nomes corretos.\n` +
+            `Colunas detectadas no arquivo: [${detectedHeaders.join(', ')}]\n` +
+            `Colunas esperadas: Placa (ou Plate), Data (ou Date) ou Primeira Entrega.`
+          );
         }
         setImportLoadingDoubleCheck(false);
       }
@@ -1438,6 +1468,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded-xl border border-emerald-200/60 dark:border-emerald-800/50 text-sm font-medium flex items-center gap-2.5 shadow-sm">
                  <span className="material-symbols-outlined text-emerald-500">cloud_done</span>
                  Rotas de double check importadas e salvas com sucesso!
+               </div>
+            )}
+            {doubleCheckError && (
+               <div className="p-4 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 rounded-xl border border-red-200/60 dark:border-red-800/50 text-sm font-medium shadow-sm space-y-2">
+                 <div className="flex items-center gap-2.5">
+                   <span className="material-symbols-outlined text-red-500">error</span>
+                   <span className="font-bold">Falha na importação</span>
+                 </div>
+                 <pre className="whitespace-pre-wrap text-xs text-red-600 dark:text-red-400">{doubleCheckError}</pre>
+                 {doubleCheckHeadersDetected.length > 0 && (
+                   <p className="text-xs text-red-500 dark:text-red-400">
+                     Cole abaixo os nomes exatos das colunas detectadas e ajuste o CSV caso necessário.
+                   </p>
+                 )}
                </div>
             )}
 
