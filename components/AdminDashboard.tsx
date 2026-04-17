@@ -1019,7 +1019,38 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           const rowKeys = Object.keys(row);
           for (const name of names) {
             const found = rowKeys.find(k => k.trim().toLowerCase() === name.trim().toLowerCase());
-            if (found && row[found] !== undefined && row[found] !== '') return String(row[found]);
+            if (found && row[found] !== undefined && row[found] !== '') return String(row[found]).trim();
+          }
+          return '';
+        };
+
+        // Helper universal para qualquer formato de data → YYYY-MM-DD
+        const parseDate = (raw: string): string => {
+          if (!raw) return '';
+          const cleaned = raw.trim().split(' ')[0]; // remove hora se houver
+          if (cleaned.includes('/')) {
+            const parts = cleaned.split('/');
+            if (parts.length === 2) {
+              // dd/mm → infere ano corrente
+              return `${new Date().getFullYear()}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+            if (parts.length === 3) {
+              if (parts[0].length === 4) {
+                // yyyy/mm/dd
+                return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+              }
+              // dd/mm/yyyy (padrão brasileiro)
+              const yearRaw = parts[2].substring(0, 4);
+              return `${yearRaw}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+          }
+          if (cleaned.includes('-')) {
+            const parts = cleaned.split('-');
+            if (parts.length === 3) {
+              if (parts[0].length === 4) return cleaned; // já é yyyy-mm-dd
+              // dd-mm-yyyy
+              return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
           }
           return '';
         };
@@ -1033,58 +1064,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           if (!rawRouteId) {
              rawRouteId = `DBLCHK-${Date.now()}-${Math.floor(Math.random()*10000)}-${index}`;
           }
-          const rawPlate = getCol(row, 'Placa', 'Plate', 'placa', 'PLACA', 'plate');
-          const rawDateStr = getCol(row, 'Data', 'Date', 'DATA', 'date');
-          const primeiraEntrega = getCol(row, 'Primeira Entrega', 'Primeira entrega', 'Início', 'inicio', 'Start Date', 'start_date');
           
-          let targetDateStr = rawDateStr;
-          if (!targetDateStr && primeiraEntrega) {
-             const datePart = primeiraEntrega.trim().split(' ')[0];
-             if (datePart.includes('/') || datePart.includes('-')) {
-                 targetDateStr = datePart;
-             }
-          } else if (targetDateStr && primeiraEntrega) {
-             // Prefer primeiraEntrega if rawDateStr is empty or primeiraEntrega is richer
-             const datePart = primeiraEntrega.trim().split(' ')[0];
-             if (datePart.includes('/') || datePart.includes('-')) {
-                 targetDateStr = datePart;
-             }
-          }
-
-          let formattedDate = '';
-          if (targetDateStr) {
-              if (targetDateStr.includes('/')) {
-                 const parts = targetDateStr.split('/');
-                 if (parts.length >= 3) {
-                     let month, day, year;
-                     if (parts[0].length === 4) {
-                         year = parts[0]; month = parts[1]; day = parts[2];
-                     } else {
-                         const yearSlice = parts[2].split(' ')[0];
-                         year = yearSlice.length > 4 ? yearSlice.substring(0, 4) : yearSlice;
-                         if (parseInt(parts[1], 10) > 12) {
-                             month = parts[0]; day = parts[1];
-                         } else if (parseInt(parts[0], 10) > 12) {
-                             day = parts[0]; month = parts[1];
-                         } else {
-                             if (parts[0].length === 1 && parts[1].length === 2 && parseInt(parts[0], 10) > 0) {
-                                 month = parts[0]; day = parts[1];
-                             } else {
-                                 day = parts[0]; month = parts[1];
-                             }
-                         }
-                     }
-                     if (parseInt(month, 10) > 12) { const temp = month; month = day; day = temp; }
-                     formattedDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                 }
-              } else if (targetDateStr.includes('-')) {
-                 formattedDate = targetDateStr.split(' ')[0];
-                 const parts = formattedDate.split('-');
-                 if (parts.length === 3 && parts[2].length === 4) {
-                     formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-                 }
-              }
-          }
+          const rawPlate = getCol(row, 'Placa', 'Plate', 'placa', 'PLACA', 'plate');
+          
+          // Prioridade: Data > HORA_INICIO > Primeira Entrega
+          const rawDateStr =
+            getCol(row, 'Data', 'Date', 'DATA', 'date') ||
+            getCol(row, 'HORA_INICIO', 'Hora Inicio', 'hora_inicio') ||
+            getCol(row, 'Primeira Entrega', 'Primeira entrega', 'Início', 'inicio', 'Start Date', 'start_date');
+          
+          const formattedDate = parseDate(rawDateStr);
 
           if (rawPlate && formattedDate) {
             payloadToInsert.push({
@@ -1092,7 +1081,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                  date: formattedDate,
                  plate: String(rawPlate).replace(/[^A-Za-z0-9]/g, '').toUpperCase(),
                  svc_id: getCol(row, 'SVC', 'svc', 'svc_id'),
-                 vehicle_type: getCol(row, 'Tipo Veiculo', 'Tipo Veículo', 'Veículo', 'Veiculo', 'Modal', 'vehicle_type', 'tipo'),
+                 vehicle_type: getCol(row, 'Veículo', 'Veiculo', 'Tipo Veiculo', 'Tipo Veículo', 'Modal', 'vehicle_type', 'tipo'),
                  xpt: getCol(row, 'XPT', 'xpt')
             });
           }
@@ -1105,7 +1094,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           setDoubleCheckError(
             `Nenhuma linha foi importada. Verifique se as colunas do CSV têm os nomes corretos.\n` +
             `Colunas detectadas no arquivo: [${detectedHeaders.join(', ')}]\n` +
-            `Colunas esperadas: Placa (ou Plate), Data (ou Date) ou Primeira Entrega.`
+            `Colunas esperadas: Placa (ou Plate) + Data (ou Date / HORA_INICIO).`
           );
         }
         setImportLoadingDoubleCheck(false);
