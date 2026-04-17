@@ -52,6 +52,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [importLoading, setImportLoading] = useState(false);
   const [importSuccess, setImportSuccess] = useState(false);
 
+  // States for Import Route Double Check
+  const [csvFileDoubleCheck, setCsvFileDoubleCheck] = useState<File | null>(null);
+  const [importLoadingDoubleCheck, setImportLoadingDoubleCheck] = useState(false);
+  const [importSuccessDoubleCheck, setImportSuccessDoubleCheck] = useState(false);
+
   // States for Audit Query
   const [auditQueryDate, setAuditQueryDate] = useState<string>(getLocalDateString());
   const [auditLoading, setAuditLoading] = useState(false);
@@ -991,6 +996,93 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     });
   };
 
+  const handleFileUploadDoubleCheck = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvFileDoubleCheck(file);
+    setImportSuccessDoubleCheck(false);
+  };
+
+  const handleImportRoutesDoubleCheck = async () => {
+    if (!csvFileDoubleCheck) return;
+    setImportLoadingDoubleCheck(true);
+    Papa.parse(csvFileDoubleCheck, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        const payloadToInsert: any[] = [];
+        results.data.forEach((row: any, index: number) => {
+          let rawRouteId = row['Rotas'] || row['Route ID'] || row['route_id'] || row['route'] || row['Route'] || row['ROUTE ID'];
+          if (!rawRouteId) {
+             rawRouteId = `DBLCHK-${Date.now()}-${Math.floor(Math.random()*10000)}-${index}`;
+          }
+          const rawPlate = row['Placa'] || row['Plate'] || row['placa'];
+          const rawDateStr = row['Data'] || row['Data '] || row['Date'] || '';
+          const primeiraEntrega = row['Primeira Entrega'] || row['Primeira entrega'] || row['Início'] || '';
+          
+          let targetDateStr = rawDateStr;
+          if (primeiraEntrega) {
+             const datePart = primeiraEntrega.trim().split(' ')[0];
+             if (datePart.includes('/') || datePart.includes('-')) {
+                 targetDateStr = datePart;
+             }
+          }
+
+          let formattedDate = '';
+          if (targetDateStr) {
+              if (targetDateStr.includes('/')) {
+                 const parts = targetDateStr.split('/');
+                 if (parts.length >= 3) {
+                     let month, day, year;
+                     if (parts[0].length === 4) {
+                         year = parts[0]; month = parts[1]; day = parts[2];
+                     } else {
+                         const yearSlice = parts[2].split(' ')[0];
+                         year = yearSlice.length > 4 ? yearSlice.substring(0, 4) : yearSlice;
+                         if (parseInt(parts[1], 10) > 12) {
+                             month = parts[0]; day = parts[1];
+                         } else if (parseInt(parts[0], 10) > 12) {
+                             day = parts[0]; month = parts[1];
+                         } else {
+                             if (parts[0].length === 1 && parts[1].length === 2 && parseInt(parts[0], 10) > 0) {
+                                 month = parts[0]; day = parts[1];
+                             } else {
+                                 day = parts[0]; month = parts[1];
+                             }
+                         }
+                     }
+                     if (parseInt(month, 10) > 12) { const temp = month; month = day; day = temp; }
+                     formattedDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                 }
+              } else if (targetDateStr.includes('-')) {
+                 formattedDate = targetDateStr.split(' ')[0];
+                 const parts = formattedDate.split('-');
+                 if (parts.length === 3 && parts[2].length === 4) {
+                     formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                 }
+              }
+          }
+
+          if (rawPlate && formattedDate) {
+            payloadToInsert.push({
+                 route_id: String(rawRouteId).trim(),
+                 date: formattedDate,
+                 plate: String(rawPlate).replace(/[^A-Za-z0-9]/g, '').toUpperCase(),
+                 svc_id: String(row['SVC'] || '').trim(),
+                 vehicle_type: String(row['Tipo Veiculo'] || row['Veículo'] || row['Modal'] || '').trim(),
+                 xpt: String(row['XPT'] || '').trim()
+            });
+          }
+        });
+        if (payloadToInsert.length > 0) {
+          await saveDailyRoutes(payloadToInsert);
+          setImportSuccessDoubleCheck(true);
+        }
+        setImportLoadingDoubleCheck(false);
+      }
+    });
+  };
+
   const runAudit = async () => {
     setAuditLoading(true);
     const routes = await getDailyRoutesByDate(auditQueryDate);
@@ -1325,6 +1417,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                  <button onClick={handleImportRoutes} disabled={!selectedPlateCol || importLoading} className="w-full md:w-auto mt-4 md:mt-0 px-8 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 disabled:opacity-50 flex items-center justify-center gap-2">
                    {importLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined">save</span>}
                    Importar e Salvar no Banco
+                 </button>
+              </div>
+            )}
+          </div>
+
+          {/* DOUBLE CHECK IMPORT SECTION */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] border border-slate-200/60 dark:border-slate-800/80 space-y-6">
+            <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center">
+                <span className="material-symbols-outlined text-orange-500">fact_check</span>
+              </div>
+              <div>
+                <h3 className="font-black text-lg text-slate-800 dark:text-slate-100">1.B. Double Check de Rotas (Sem Route ID)</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Use esta opção para fazer o check secundário quando as rotas não tiverem a coluna Route ID.</p>
+              </div>
+            </div>
+
+            {importSuccessDoubleCheck && (
+               <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded-xl border border-emerald-200/60 dark:border-emerald-800/50 text-sm font-medium flex items-center gap-2.5 shadow-sm">
+                 <span className="material-symbols-outlined text-emerald-500">cloud_done</span>
+                 Rotas de double check importadas e salvas com sucesso!
+               </div>
+            )}
+
+            <div className="w-full">
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Arquivo CSV de Rotas para Double Check (Ex: rotas.csv)</label>
+              <input type="file" accept=".csv" onChange={handleFileUploadDoubleCheck} onClick={() => setImportSuccessDoubleCheck(false)} className="w-full text-sm text-slate-500 file:mr-4 file:py-3.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-orange-500/10 file:text-orange-600 hover:file:bg-orange-500/20 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 focus:outline-none dark:text-slate-400" />
+            </div>
+
+            {csvFileDoubleCheck && (
+              <div className="bg-orange-50 dark:bg-orange-900/10 p-4 rounded-xl border border-orange-100 dark:border-orange-800/30 flex flex-col md:flex-row gap-4 items-center justify-between">
+                 <div className="w-full md:w-1/2">
+                   <p className="text-xs text-orange-700 dark:text-orange-400 font-medium">Arquivo selecionado: {csvFileDoubleCheck.name}</p>
+                 </div>
+                 
+                 <button onClick={handleImportRoutesDoubleCheck} disabled={importLoadingDoubleCheck} className="w-full md:w-auto mt-4 md:mt-0 px-8 py-3.5 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl shadow-lg shadow-orange-500/30 disabled:opacity-50 flex items-center justify-center gap-2">
+                   {importLoadingDoubleCheck ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined">save</span>}
+                   Importar Double Check
                  </button>
               </div>
             )}
