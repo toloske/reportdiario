@@ -2319,6 +2319,91 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                    </button>
                  </div>
 
+                  {/* SEÇÃO DE ERROS DE PREENCHIMENTO - WHATSAPP */}
+                  {(() => {
+                    const visibleErrors = finalDisplayedDetails.filter(d =>
+                      (!d.didRun && d.reason && d.reason.toUpperCase().includes('RODOU')) ||
+                      (!d.didRun && d.reason === 'Sem justificativa preenchida')
+                    );
+
+                    // Group by SVC
+                    const errorsBySvc: Record<string, { svcName: string, plates: { date: string, plate: string, reason: string }[] }> = {};
+                    visibleErrors.forEach(d => {
+                      if (!errorsBySvc[d.svc]) {
+                        const svcObj = svcs.find((s: any) => s.id === d.svc);
+                        errorsBySvc[d.svc] = { svcName: svcObj ? svcObj.name : d.svc, plates: [] };
+                      }
+                      errorsBySvc[d.svc].plates.push({ date: d.date, plate: d.plate, reason: d.reason });
+                    });
+
+                    const svcKeys = Object.keys(errorsBySvc).sort();
+
+                    if (visibleErrors.length === 0) {
+                      return (
+                        <div className="mb-6 p-4 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded-xl border border-emerald-200/60 dark:border-emerald-800/50 text-sm font-medium flex items-center gap-3 shadow-sm">
+                          <span className="material-symbols-outlined text-emerald-500 scale-110">verified</span>
+                          Nenhum erro de preenchimento identificado para os filtros atuais.
+                        </div>
+                      );
+                    }
+
+                    const isSingleDate = startDate === endDate;
+                    const dateStr = isSingleDate ? startDate.split('-').reverse().join('/') : `${startDate.split('-').reverse().join('/')} a ${endDate.split('-').reverse().join('/')}`;
+
+                    const buildMessage = () => {
+                      let msg = `Verificação de placas sem rota - ${dateStr}\n\n`;
+                      msg += `Atenção: As placas abaixo estão justificadas como "RODOU", mas não tiveram rotas identificadas no sistema, ou estão sem justificativa preenchida:\n\n`;
+                      svcKeys.forEach(svcId => {
+                        const group = errorsBySvc[svcId];
+                        msg += ` ${group.svcName}\n`;
+                        group.plates.forEach(p => {
+                          const dateShort = p.date.split('-').reverse().slice(0, 2).join('/');
+                          msg += `  • ${p.plate}${!isSingleDate ? ` (${dateShort})` : ''}\n`;
+                        });
+                        msg += '\n';
+                      });
+                      msg += `Qual a justificativa correta das placas?`;
+                      return msg;
+                    };
+
+                    return (
+                      <div className="mb-6 space-y-2">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-1 gap-3">
+                          <h4 className="flex items-center gap-2 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                            <span className="material-symbols-outlined text-[18px] text-red-500">error</span>
+                            Erros de Preenchimento ({visibleErrors.length} placa{visibleErrors.length !== 1 ? 's' : ''})
+                          </h4>
+                         <button
+                           onClick={() => {
+                             const mensagem = buildMessage();
+                             const url = `https://wa.me/?text=${encodeURIComponent(mensagem)}`;
+                             window.open(url, '_blank');
+                           }}
+                           className="px-4 py-2 bg-[#25D366] hover:bg-[#1DA851] text-white text-xs font-bold rounded-xl flex items-center gap-2 active:scale-95 transition-all shadow-md shadow-green-500/20"
+                         >
+                           <img
+                             src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='white'%3E%3Cpath d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z'/%3E%3C/svg%3E"
+                             alt="WhatsApp"
+                           />
+                           Enviar Erros via WhatsApp
+                         </button>
+                       </div>
+
+                       <div className="flex flex-wrap gap-2.5 p-1 mt-2">
+                         {svcKeys.map(svcId => {
+                           const group = errorsBySvc[svcId];
+                           return (
+                             <span key={svcId} className="px-4 py-2 bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800 shadow-sm rounded-xl text-sm font-bold text-slate-600 dark:text-slate-300 flex items-center gap-2">
+                               <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+                               {group.svcName} ({group.plates.length})
+                             </span>
+                           );
+                         })}
+                       </div>
+                     </div>
+                   );
+                 })()}
+
                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Filtrar por Placa</label>
