@@ -2388,7 +2388,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                         msg += ` ${group.svcName}\n`;
                         group.plates.forEach(p => {
                           const dateShort = p.date.split('-').reverse().slice(0, 2).join('/');
-                          msg += `  • ${p.plate}${!isSingleDate ? ` (${dateShort})` : ''}\n`;
+                          let prazoText = '';
+                          const reasonLower = p.reason.toLowerCase();
+                          if (reasonLower.startsWith('sem driver')) {
+                             let textAfter = p.reason.substring(10).trim();
+                             if (textAfter.startsWith('-')) textAfter = textAfter.substring(1).trim();
+                             if (textAfter) prazoText = ` - ${textAfter}`;
+                          } else {
+                             prazoText = ` - ${p.reason}`;
+                          }
+                          msg += `  • ${p.plate}${prazoText}${!isSingleDate ? ` (${dateShort})` : ''}\n`;
                         });
                         msg += '\n';
                       });
