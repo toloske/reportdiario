@@ -1757,6 +1757,59 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                    document.body.removeChild(link);
                 };
 
+                const handleSendWhatsAppDashboardSpot = () => {
+                   let msg = `*Relatório SPOT - Oferta vs Utilização*\n`;
+                   const isSingleDate = dirStartDate === dirEndDate;
+                   if (isSingleDate) {
+                       msg += `Data: ${dirStartDate.split('-').reverse().join('/')}\n`;
+                   } else {
+                       msg += `Período: ${dirStartDate.split('-').reverse().join('/')} a ${dirEndDate.split('-').reverse().join('/')}\n`;
+                   }
+                   if (dirRegionalFilter) msg += `Filtro Regional: ${dirRegionalFilter}\n`;
+                   msg += `\n`;
+
+                   const byDateRegionalSvc: Record<string, Record<string, Record<string, {offer: number, utilized: number}>>> = {};
+                   
+                   displayData.forEach(item => {
+                       const reg = Object.keys(MAPEAMENTO_REGIONAIS).find(k => MAPEAMENTO_REGIONAIS[k].includes(item.svc)) || 'Outras Regionais';
+                       if (!byDateRegionalSvc[item.date]) byDateRegionalSvc[item.date] = {};
+                       if (!byDateRegionalSvc[item.date][reg]) byDateRegionalSvc[item.date][reg] = {};
+                       if (!byDateRegionalSvc[item.date][reg][item.svc]) byDateRegionalSvc[item.date][reg][item.svc] = {offer: 0, utilized: 0};
+                       
+                       byDateRegionalSvc[item.date][reg][item.svc].offer += item.offer;
+                       byDateRegionalSvc[item.date][reg][item.svc].utilized += item.utilized;
+                   });
+
+                   const dates = Object.keys(byDateRegionalSvc).sort((a,b) => b.localeCompare(a));
+                   
+                   dates.forEach(date => {
+                       if (!isSingleDate) msg += `*Data: ${date.split('-').reverse().join('/')}*\n\n`;
+                       const regionais = Object.keys(byDateRegionalSvc[date]).sort();
+                       regionais.forEach(reg => {
+                           msg += `*${reg}*\n`;
+                           const svcs = Object.keys(byDateRegionalSvc[date][reg]).sort();
+                           svcs.forEach(svc => {
+                               const data = byDateRegionalSvc[date][reg][svc];
+                               const perc = data.offer > 0 ? ((data.utilized / data.offer) * 100).toFixed(0) : '0';
+                               const gap = data.offer - data.utilized;
+                               let gapStr = '';
+                               if (gap > 0) gapStr = ` | Defasagem: ${gap}`;
+                               else if (gap < 0) gapStr = ` | Excesso: ${Math.abs(gap)}`;
+                               
+                               msg += `${svc} - Oferta: ${data.offer} | Utilizado: ${data.utilized} (${perc}%)${gapStr}\n`;
+                           });
+                           msg += `\n`;
+                       });
+                   });
+
+                   msg += `*RESUMO TOTAL NO PERÍODO*\n`;
+                   msg += `Oferta: ${dirTotalOffer} | Utilizado: ${dirTotalUtilized} (${dirPercentage}%)\n`;
+
+                   const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+                   window.open(url, '_blank');
+                };
+
+
                 return (
                   <div>
                     {/* KPI Cards */}
@@ -1822,6 +1875,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                          <h3 className="font-bold text-slate-700 dark:text-slate-300">Detalhamento dos Filtros</h3>
                          <div className="flex items-center gap-3">
                            <span className="text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3 py-1 rounded-full text-slate-500 dark:text-slate-400">{displayData.length} registros</span>
+                           <button onClick={handleSendWhatsAppDashboardSpot} disabled={displayData.length === 0} className="px-4 py-2 bg-[#25D366] hover:bg-[#1DA851] text-white font-bold rounded-xl flex items-center justify-center gap-2 text-xs shadow-md transition-all active:scale-95 disabled:opacity-50">
+                             <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='white'%3E%3Cpath d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z'/%3E%3C/svg%3E" alt="WhatsApp" />
+                             Enviar WhatsApp
+                           </button>
                            <button onClick={handleExportDashboardSpot} disabled={displayData.length === 0} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 text-xs shadow-md transition-all active:scale-95 disabled:opacity-50">
                              <span className="material-symbols-outlined text-[16px]">download</span>
                              Exportar CSV
@@ -1852,7 +1909,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                  return (
                                    <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors">
                                      <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-600 dark:text-slate-300 text-xs">{item.date.split('-').reverse().join('/')}</td>
-                                     <td className="px-6 py-4 whitespace-nowrap font-bold text-slate-800 dark:text-slate-200">{item.svc}</td>
+                                     <td className="px-6 py-4 whitespace-nowrap font-bold text-slate-800 dark:text-slate-200">
+                                       <div className="flex items-center gap-2">
+                                          {item.svc}
+                                          {item.utilized > item.offer && (
+                                            <span className="flex items-center gap-1 text-[10px] bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider" title="Mais veículos utilizados do que ofertados">
+                                              <span className="material-symbols-outlined text-[14px]">warning</span>
+                                              {item.offer === 0 ? 'Sem Oferta' : 'Excesso'}
+                                            </span>
+                                          )}
+                                       </div>
+                                     </td>
                                      <td className="px-6 py-4 whitespace-nowrap text-xs font-semibold text-slate-500 bg-slate-50 dark:bg-slate-900 rounded-md m-2 inline-block px-2 py-1 border border-slate-100 dark:border-slate-700 mt-2.5 dark:text-slate-400">{item.modal}</td>
                                      <td className="px-6 py-4 text-center bg-blue-50/30 dark:bg-blue-500/5">
                                         {editingOfferKey === `${item.date}|${item.svc}|${item.modal}` ? (
@@ -2429,15 +2496,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     const buildMessage = () => {
                       let msg = `Verificação de placas sem rota - ${dateStr}\n\n`;
                       msg += `Atenção: As placas abaixo estão justificadas como "RODOU", mas não tiveram rotas identificadas no sistema, ou estão sem justificativa preenchida:\n\n`;
-                      svcKeys.forEach(svcId => {
-                        const group = errorsBySvc[svcId];
-                        msg += ` ${group.svcName}\n`;
-                        group.plates.forEach(p => {
-                          const dateShort = p.date.split('-').reverse().slice(0, 2).join('/');
-                          msg += `  • ${p.plate}${!isSingleDate ? ` (${dateShort})` : ''}\n`;
-                        });
-                        msg += '\n';
+                      
+                      const byRegional: Record<string, string[]> = {};
+                      svcKeys.forEach(svc => {
+                         const reg = Object.keys(MAPEAMENTO_REGIONAIS).find(k => MAPEAMENTO_REGIONAIS[k].includes(svc)) || 'Outras Regionais';
+                         if (!byRegional[reg]) byRegional[reg] = [];
+                         byRegional[reg].push(svc);
                       });
+
+                      const regionais = Object.keys(byRegional).sort();
+                      regionais.forEach(reg => {
+                         msg += `*${reg}*\n`;
+                         byRegional[reg].forEach(svcId => {
+                           const group = errorsBySvc[svcId];
+                           msg += ` ${group.svcName}\n`;
+                           group.plates.forEach(p => {
+                             const dateShort = p.date.split('-').reverse().slice(0, 2).join('/');
+                             msg += `  • ${p.plate}${!isSingleDate ? ` (${dateShort})` : ''}\n`;
+                           });
+                         });
+                         msg += '\n';
+                      });
+                      
                       msg += `Qual a justificativa correta das placas?`;
                       return msg;
                     };
@@ -2445,23 +2525,35 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     const buildSemDriverMessage = () => {
                       let msg = `Verificação de carros Sem Driver - ${dateStr}\n\n`;
                       msg += `Atenção: Os veículos abaixo estão justificados como "Sem Driver":\n\n`;
-                      semDriverSvcKeys.forEach(svcId => {
-                        const group = semDriverBySvc[svcId];
-                        msg += ` ${group.svcName}\n`;
-                        group.plates.forEach(p => {
-                          const dateShort = p.date.split('-').reverse().slice(0, 2).join('/');
-                          let prazoText = '';
-                          const reasonLower = p.reason.toLowerCase();
-                          if (reasonLower.startsWith('sem driver')) {
-                             let textAfter = p.reason.substring(10).trim();
-                             if (textAfter.startsWith('-')) textAfter = textAfter.substring(1).trim();
-                             if (textAfter) prazoText = ` - ${textAfter}`;
-                          } else {
-                             prazoText = ` - ${p.reason}`;
-                          }
-                          msg += `  • ${p.plate}${prazoText}${!isSingleDate ? ` (${dateShort})` : ''}\n`;
-                        });
-                        msg += '\n';
+                      
+                      const byRegional: Record<string, string[]> = {};
+                      semDriverSvcKeys.forEach(svc => {
+                         const reg = Object.keys(MAPEAMENTO_REGIONAIS).find(k => MAPEAMENTO_REGIONAIS[k].includes(svc)) || 'Outras Regionais';
+                         if (!byRegional[reg]) byRegional[reg] = [];
+                         byRegional[reg].push(svc);
+                      });
+
+                      const regionais = Object.keys(byRegional).sort();
+                      regionais.forEach(reg => {
+                         msg += `*${reg}*\n`;
+                         byRegional[reg].forEach(svcId => {
+                           const group = semDriverBySvc[svcId];
+                           msg += ` ${group.svcName}\n`;
+                           group.plates.forEach(p => {
+                             const dateShort = p.date.split('-').reverse().slice(0, 2).join('/');
+                             let prazoText = '';
+                             const reasonLower = p.reason.toLowerCase();
+                             if (reasonLower.startsWith('sem driver')) {
+                                let textAfter = p.reason.substring(10).trim();
+                                if (textAfter.startsWith('-')) textAfter = textAfter.substring(1).trim();
+                                if (textAfter) prazoText = ` - ${textAfter}`;
+                             } else {
+                                prazoText = ` - ${p.reason}`;
+                             }
+                             msg += `  • ${p.plate}${prazoText}${!isSingleDate ? ` (${dateShort})` : ''}\n`;
+                           });
+                         });
+                         msg += '\n';
                       });
                       msg += `Podemos auxiliar na alocação de motoristas?`;
                       return msg;
