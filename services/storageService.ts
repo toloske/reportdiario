@@ -182,14 +182,41 @@ export const updateReportJustifications = async (reportId: string, newJustificat
 };
 
 export const updateReportOffer = async (date: string, svc_id: string, modalKey: string, newOffer: number) => {
-  const { error } = await supabase
+  const { data: existing, error: fetchError } = await supabase
     .from('daily_reports')
-    .update({ [modalKey]: newOffer })
-    .match({ date, svc_id });
+    .select('id')
+    .match({ date, svc_id })
+    .maybeSingle();
 
-  if (error) {
-    console.error('Error updating report offer:', error);
-    throw error;
+  if (fetchError) {
+    console.error('Error fetching existing report:', fetchError);
+    throw fetchError;
+  }
+
+  if (existing) {
+    const { error } = await supabase
+      .from('daily_reports')
+      .update({ [modalKey]: newOffer })
+      .match({ date, svc_id });
+
+    if (error) {
+      console.error('Error updating report offer:', error);
+      throw error;
+    }
+  } else {
+    const { error } = await supabase
+      .from('daily_reports')
+      .insert([{ 
+        date, 
+        svc_id, 
+        [modalKey]: newOffer,
+        acceptance_type: 'Correção de Anomalia'
+      }]);
+
+    if (error) {
+      console.error('Error inserting new report for offer:', error);
+      throw error;
+    }
   }
 };
 

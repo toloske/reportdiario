@@ -671,25 +671,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
            }
         });
 
-        const routesBySvcAndPlate: Record<string, Set<string>> = {};
+        const routesBySvcAndPlate: Record<string, Map<string, string>> = {};
         fetchedRoutes.forEach(r => {
             const svc = r.xpt?.toUpperCase() === 'ESP8' ? 'XPT' : (r.svc_id || '');
-            if (!routesBySvcAndPlate[svc]) routesBySvcAndPlate[svc] = new Set();
-            routesBySvcAndPlate[svc].add(r.plate);
+            if (!routesBySvcAndPlate[svc]) routesBySvcAndPlate[svc] = new Map();
+            routesBySvcAndPlate[svc].set(r.plate, r.vehicle_type);
         });
 
         validSvcIds.forEach(svc => {
-           const platesInSvc = routesBySvcAndPlate[svc] || new Set();
+           const platesInSvc = routesBySvcAndPlate[svc] || new Map();
            let fixedRanCount = 0;
            let spotRanCount = 0;
            
            const fixedPlatesForThisSvc = fixedVehicles.filter(v => v.svc_id === svc).map(v => v.plate);
 
-           platesInSvc.forEach(plate => {
+           const mapVehicleToCategory = (rawType: string): string => {
+               const t = (rawType || '').toUpperCase().trim();
+               if (['BULK - VUC EQUIPE ÚNICA POOL', 'UTILITÁRIOS', 'BULK - VAN EQUIPE ÚNICA POOL', 'VAN', 'VEÍCULO DE PASSEIO', 'VUC'].includes(t)) return t;
+               return ''; 
+           };
+
+           platesInSvc.forEach((vehicleType, plate) => {
                if (fixedPlatesForThisSvc.includes(plate)) {
                    fixedRanCount++;
                } else {
-                   spotRanCount++;
+                   if (mapVehicleToCategory(vehicleType) !== '') {
+                       spotRanCount++;
+                   }
                }
            });
 
@@ -1193,26 +1201,51 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-8 space-y-6 font-sans">
-      <div className="flex items-center justify-between bg-white dark:bg-slate-900 px-6 py-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-        <h2 className="text-xl font-extrabold text-primary">Painel Master</h2>
-        <button onClick={onBack} className="p-2 bg-slate-100 rounded-full dark:bg-slate-800"><span className="material-symbols-outlined">close</span></button>
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-900 px-6 py-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+        <h2 className="text-xl font-extrabold text-primary flex items-center gap-2">
+           Painel Master
+        </h2>
+        <div className="flex items-center gap-3">
+          <button 
+             onClick={() => setActiveTab('audit' as any)}
+             className={`px-4 py-2 font-bold text-xs tracking-wide rounded-xl transition-all flex items-center gap-1.5
+                ${activeTab === 'audit' ? 'bg-indigo-600 text-white shadow-md' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50'}`}
+          >
+             <span className="material-symbols-outlined text-[16px]">upload_file</span>
+             Subir Rotas
+          </button>
+          <button 
+             onClick={() => setActiveTab('export' as any)}
+             className={`px-4 py-2 font-bold text-xs tracking-wide rounded-xl transition-all flex items-center gap-1.5
+                ${activeTab === 'export' ? 'bg-amber-600 text-white shadow-md' : 'bg-amber-50 text-amber-600 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50'}`}
+          >
+             <span className="material-symbols-outlined text-[16px]">download</span>
+             Exportar
+          </button>
+          <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+          <button onClick={onBack} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full dark:bg-slate-800 transition-colors">
+            <span className="material-symbols-outlined text-[18px]">close</span>
+          </button>
+        </div>
       </div>
 
       <div className="flex justify-center gap-2 bg-white dark:bg-slate-900 p-2.5 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200/60 dark:border-slate-800/80 overflow-x-auto">
         {[
            { id: 'daily', label: 'Diário' },
            { id: 'utilization', label: 'Utilização' },
-           { id: 'audit', label: 'Subir Rotas' },
-           { id: 'export', label: 'Exportar' },
            { id: 'director', label: 'Ofertas SPOT' },
            { id: 'summary', label: 'Resumo Diário' }
         ].map((tab) => (
           <button 
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`px-6 py-3 font-bold text-sm tracking-wide rounded-xl transition-all duration-300 whitespace-nowrap 
+            className={`px-6 py-3 font-bold text-sm tracking-wide rounded-xl transition-all duration-300 whitespace-nowrap flex items-center gap-2
               ${activeTab === tab.id ? 'bg-primary text-white shadow-md scale-[1.02]' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/80 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800'}`}
           >
+            {tab.id === 'daily' && <span className="material-symbols-outlined text-[18px]">calendar_today</span>}
+            {tab.id === 'utilization' && <span className="material-symbols-outlined text-[18px]">pie_chart</span>}
+            {tab.id === 'director' && <span className="material-symbols-outlined text-[18px]">dashboard</span>}
+            {tab.id === 'summary' && <span className="material-symbols-outlined text-[18px]">analytics</span>}
             {tab.label.toUpperCase()}
           </button>
         ))}
