@@ -1835,8 +1835,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                        });
                    });
 
+                   const totalGap = dirTotalOffer - dirTotalUtilized;
+                   const totalGapStr = totalGap > 0 ? ` | Não Utilizados: ${totalGap}` : (totalGap < 0 ? ` | Excesso: ${Math.abs(totalGap)}` : '');
                    msg += `*RESUMO TOTAL NO PERÍODO*\n`;
-                   msg += `Oferta: ${dirTotalOffer} | Utilizado: ${dirTotalUtilized} (${dirPercentage}%)\n`;
+                   msg += `Oferta: ${dirTotalOffer} | Utilizado: ${dirTotalUtilized} (${dirPercentage}%)${totalGapStr}\n`;
 
                    const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
                    window.open(url, '_blank');
