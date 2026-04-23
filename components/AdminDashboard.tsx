@@ -6,6 +6,13 @@ import { dataService, SVC, Vehicle } from '../services/dataService';
 import { INITIAL_CATEGORIES, JUSTIFICATION_OPTIONS } from '../constants';
 import Papa from 'papaparse';
 
+const MAPEAMENTO_REGIONAIS: Record<string, string[]> = {
+    "Regional 01": ["SSP20", "SSP27", "SSP34", "SSP36", "XPT"],
+    "Regional 02": ["SSP7", "SSP8", "SSP23", "SSP39", "SSP40", "SSP49", "BRXSP16", "FIRST MILE"],
+    "Regional 03": ["SSP3", "SSP9", "SSP18", "SSP25", "SSP29", "SSP37", "SSP38"],
+    "Regional 04": ["SSP4", "SSP10", "SSP12", "SSP22", "SSP26", "SSP28", "SSP31"]
+};
+
 interface AdminDashboardProps {
   onBack: () => void;
 }
@@ -76,12 +83,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [dirStartDate, setDirStartDate] = useState(getLocalDateString());
   const [dirEndDate, setDirEndDate] = useState(getLocalDateString());
   const [dirSvcFilter, setDirSvcFilter] = useState('');
+  const [dirRegionalFilter, setDirRegionalFilter] = useState('');
   const [dirModalFilter, setDirModalFilter] = useState('');
   const [dirConsolidateModals, setDirConsolidateModals] = useState(true);
   const [dirData, setDirData] = useState<any[]>([]);
   const [dirLoading, setDirLoading] = useState(false);
   const [detailedUtilizationData, setDetailedUtilizationData] = useState<any[]>([]);
   const [detSvcFilter, setDetSvcFilter] = useState('');
+  const [detRegionalFilter, setDetRegionalFilter] = useState('');
   const [detStatusFilter, setDetStatusFilter] = useState<'all'|'ran'|'idle'>('all');
   const [detAnomalyFilter, setDetAnomalyFilter] = useState<'all'|'divergent'|'red'>('all');
   const [detPlateFilter, setDetPlateFilter] = useState('');
@@ -93,6 +102,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [weeklyDate, setWeeklyDate] = useState(getLocalDateString());
   const [weeklyWeekVal, setWeeklyWeekVal] = useState(getWeekStringFromDate(getLocalDateString()));
   const [weeklySvcFilter, setWeeklySvcFilter] = useState('');
+  const [weeklyRegionalFilter, setWeeklyRegionalFilter] = useState('');
   const [weeklyData, setWeeklyData] = useState<any[]>([]);
   const [weeklyLoading, setWeeklyLoading] = useState(false);
   const [weeklyDays, setWeeklyDays] = useState<{date: string, dayName: string, shortDate: string}[]>([]);
@@ -438,7 +448,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           getDailyRoutesByDateRange(startStr, endStr)
         ]);
 
-        const currentFixedVehicles = weeklySvcFilter === '' ? fixedVehicles : fixedVehicles.filter(v => v.svc_id === weeklySvcFilter);
+        const currentFixedVehicles = fixedVehicles.filter(v => 
+            (!weeklyRegionalFilter || MAPEAMENTO_REGIONAIS[weeklyRegionalFilter]?.includes(v.svc_id)) &&
+            (weeklySvcFilter === '' || v.svc_id === weeklySvcFilter)
+        );
         const validFixedPlates = currentFixedVehicles.map(v => v.plate);
         
         const routesByDateAndPlate: Record<string, boolean> = {};
@@ -454,7 +467,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         });
 
         fetchedReports.forEach(rep => {
-            if (weeklySvcFilter === '' || rep.svc_id === weeklySvcFilter) {
+            if ((!weeklyRegionalFilter || MAPEAMENTO_REGIONAIS[weeklyRegionalFilter]?.includes(rep.svc_id)) &&
+                (weeklySvcFilter === '' || rep.svc_id === weeklySvcFilter)) {
                 // Populate Spot Offer
                 INITIAL_CATEGORIES.forEach(cat => {
                    const key = `offer_${cat.id.replace(/-/g, '_')}`;
@@ -480,7 +494,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         const spotRanCounts: Record<string, number> = {};
         fetchedRoutes.forEach(r => {
              const svc = r.xpt?.toUpperCase() === 'ESP8' ? 'XPT' : (r.svc_id || '');
-             if (weeklySvcFilter === '' || svc === weeklySvcFilter) {
+             if ((!weeklyRegionalFilter || MAPEAMENTO_REGIONAIS[weeklyRegionalFilter]?.includes(svc)) &&
+                 (weeklySvcFilter === '' || svc === weeklySvcFilter)) {
                  if (!validFixedPlates.includes(r.plate)) {
                      spotRanCounts[r.date] = (spotRanCounts[r.date] || 0) + 1;
                  }
@@ -545,7 +560,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       }
     };
     loadWeeklyData();
-  }, [weeklyDate, weeklySvcFilter, utilActiveTab, fixedVehicles, svcs]);
+  }, [weeklyDate, weeklySvcFilter, weeklyRegionalFilter, utilActiveTab, fixedVehicles, svcs]);
 
   useEffect(() => {
     const fetchDirData = async () => {
@@ -1626,7 +1641,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           </div>
           
           <div className="bg-slate-50 border border-slate-200 dark:bg-slate-800/40 dark:border-slate-700/50 rounded-2xl p-6 mb-8 w-full sticky top-0 z-10 shadow-sm backdrop-blur-md">
-             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+             <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Data Inicial</label>
                   <input type="date" value={dirStartDate} max={dirEndDate} onChange={e => setDirStartDate(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-amber-500/20 focus:border-amber-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-all" />
@@ -1636,12 +1651,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                   <input type="date" value={dirEndDate} min={dirStartDate} max={getLocalDateString()} onChange={e => setDirEndDate(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-amber-500/20 focus:border-amber-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-all" />
                 </div>
                 <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Regional</label>
+                  <div className="relative">
+                    <select value={dirRegionalFilter} onChange={e => {setDirRegionalFilter(e.target.value); setDirSvcFilter('');}} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-amber-500/20 focus:border-amber-500 font-medium text-slate-700 dark:text-slate-200 appearance-none shadow-sm transition-all">
+                      <option value="">Todas</option>
+                      {Object.keys(MAPEAMENTO_REGIONAIS).map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none dark:text-slate-400">public</span>
+                  </div>
+                </div>
+                <div>
                   <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Filtro SVC</label>
                   <div className="relative">
                     <select value={dirSvcFilter} onChange={e => setDirSvcFilter(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-amber-500/20 focus:border-amber-500 font-medium text-slate-700 dark:text-slate-200 appearance-none shadow-sm transition-all">
                       <option value="">Todos os SVCs</option>
-                      {/* Extract unique SVCs from the data itself dynamically! */}
-                      {Array.from(new Set(dirData.map(d => d.svc))).sort().map(s => (
+                      {Array.from(new Set(dirData.map(d => d.svc)))
+                        .filter(s => !dirRegionalFilter || MAPEAMENTO_REGIONAIS[dirRegionalFilter]?.includes(s))
+                        .sort().map(s => (
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
@@ -1661,7 +1689,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                   </div>
                 </div>
                 
-                <div className="md:col-span-4 mt-2 flex items-center justify-end">
+                <div className="md:col-span-5 mt-2 flex items-center justify-end">
                   <label className="flex items-center gap-2 cursor-pointer bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 px-4 py-2 rounded-xl transition-all hover:bg-amber-100 dark:hover:bg-amber-900/20">
                     <input type="checkbox" checked={dirConsolidateModals} onChange={e => setDirConsolidateModals(e.target.checked)} className="rounded text-amber-500 focus:ring-amber-500 w-4 h-4" />
                     <span className="text-sm font-bold text-amber-700 dark:text-amber-400">Consolidar tabela somando todos os Modais por Polo/SVC</span>
@@ -1679,6 +1707,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             <>
               {(() => {
                 const filteredDirData = dirData.filter(d => 
+                   (!dirRegionalFilter || MAPEAMENTO_REGIONAIS[dirRegionalFilter]?.includes(d.svc)) &&
                    (!dirSvcFilter || d.svc === dirSvcFilter) &&
                    (!dirModalFilter || d.modal === dirModalFilter)
                 );
@@ -1701,6 +1730,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                    });
                    displayData = Object.values(grouped);
                 }
+
+                const handleExportDashboardSpot = () => {
+                   const rows = [["Data", "Polo/SVC", "Modal", "Oferta", "Utilizado (Placas)", "Rotas Totais", "Performance/Aprov."]];
+                   const dataToExport = [...displayData].sort((a,b) => b.date.localeCompare(a.date));
+                   dataToExport.forEach(item => {
+                       const itemPerc = item.offer > 0 ? ((item.utilized / item.offer) * 100).toFixed(0) : '0';
+                       rows.push([
+                           item.date.split('-').reverse().join('/'),
+                           item.svc,
+                           item.modal,
+                           item.offer.toString(),
+                           item.utilized.toString(),
+                           item.utilizedRoutes.toString(),
+                           `${itemPerc}%`
+                       ]);
+                   });
+                   const csvContent = rows.map(r => r.join(";")).join("\n");
+                   const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+                   const url = URL.createObjectURL(blob);
+                   const link = document.createElement("a");
+                   link.href = url;
+                   link.setAttribute("download", `Dashboard_SPOT_${dirStartDate}_a_${dirEndDate}.csv`);
+                   document.body.appendChild(link);
+                   link.click();
+                   document.body.removeChild(link);
+                };
 
                 return (
                   <div>
@@ -1763,9 +1818,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     
                     {/* Detail Table */}
                     <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm w-full">
-                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                       <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                          <h3 className="font-bold text-slate-700 dark:text-slate-300">Detalhamento dos Filtros</h3>
-                         <span className="text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3 py-1 rounded-full text-slate-500 dark:text-slate-400">{displayData.length} registros</span>
+                         <div className="flex items-center gap-3">
+                           <span className="text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3 py-1 rounded-full text-slate-500 dark:text-slate-400">{displayData.length} registros</span>
+                           <button onClick={handleExportDashboardSpot} disabled={displayData.length === 0} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 text-xs shadow-md transition-all active:scale-95 disabled:opacity-50">
+                             <span className="material-symbols-outlined text-[16px]">download</span>
+                             Exportar CSV
+                           </button>
+                         </div>
                        </div>
                        <div className="overflow-x-auto w-full">
                          <table className="w-full text-sm text-left">
@@ -2249,6 +2310,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           {/* DETALHAMENTO PLACA A PLACA */}
           {utilActiveTab === 'details' && detailedUtilizationData.length > 0 && (() => {
              const filteredDetails = detailedUtilizationData.filter(d => 
+                (!detRegionalFilter || MAPEAMENTO_REGIONAIS[detRegionalFilter]?.includes(d.svc)) &&
                 (!detSvcFilter || d.svc === detSvcFilter) &&
                 (!detPlateFilter || d.plate.toLowerCase().includes(detPlateFilter.toLowerCase())) &&
                 (!detJustificationCategoryFilter || (d.reason && d.reason.toLowerCase().includes(detJustificationCategoryFilter.toLowerCase()))) &&
@@ -2482,7 +2544,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     );
                  })()}
 
-                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                 <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Filtrar por Placa</label>
                       <input 
@@ -2494,11 +2556,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                       />
                     </div>
                     <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Regional</label>
+                      <div className="relative">
+                        <select value={detRegionalFilter} onChange={e => {setDetRegionalFilter(e.target.value); setDetSvcFilter('');}} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-blue-500 shadow-sm appearance-none">
+                          <option value="">Todas</option>
+                          {Object.keys(MAPEAMENTO_REGIONAIS).map(r => (
+                             <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                        <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none dark:text-slate-400">public</span>
+                      </div>
+                    </div>
+                    <div>
                       <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Filtrar por SVC</label>
                       <div className="relative">
                         <select value={detSvcFilter} onChange={e => setDetSvcFilter(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-blue-500 shadow-sm appearance-none">
                           <option value="">Todos os SVCs</option>
-                          {Array.from(new Set(detailedUtilizationData.map(d => d.svc))).sort().map(s => (
+                          {Array.from(new Set(detailedUtilizationData.map(d => d.svc)))
+                             .filter(s => !detRegionalFilter || MAPEAMENTO_REGIONAIS[detRegionalFilter]?.includes(s as string))
+                             .sort().map(s => (
                              <option key={s as string} value={s as string}>{s as string}</option>
                           ))}
                         </select>
@@ -2683,7 +2759,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                  </button>
                </div>
 
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Filtro de Semana do Ano</label>
                     <input 
@@ -2704,11 +2780,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     />
                   </div>
                   <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Regional</label>
+                    <div className="relative">
+                      <select value={weeklyRegionalFilter} onChange={e => {setWeeklyRegionalFilter(e.target.value); setWeeklySvcFilter('');}} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-indigo-500 shadow-sm appearance-none">
+                        <option value="">Todas</option>
+                        {Object.keys(MAPEAMENTO_REGIONAIS).map(r => (
+                           <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                      <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none dark:text-slate-400">public</span>
+                    </div>
+                  </div>
+                  <div>
                     <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Filtrar por SVC</label>
                     <div className="relative">
                       <select value={weeklySvcFilter} onChange={e => setWeeklySvcFilter(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-indigo-500 shadow-sm appearance-none">
                         <option value="">Geral / Todos os SVCs</option>
-                        {Array.from(new Set(fixedVehicles.map(v => v.svc_id))).sort().map(s => (
+                        {Array.from(new Set(fixedVehicles.map(v => v.svc_id)))
+                          .filter(s => !weeklyRegionalFilter || MAPEAMENTO_REGIONAIS[weeklyRegionalFilter]?.includes(s))
+                          .sort().map(s => (
                            <option key={s} value={s}>{s}</option>
                         ))}
                       </select>
