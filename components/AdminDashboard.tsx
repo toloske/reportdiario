@@ -93,6 +93,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [detRegionalFilter, setDetRegionalFilter] = useState('');
   const [detStatusFilter, setDetStatusFilter] = useState<'all'|'ran'|'idle'>('all');
   const [detAnomalyFilter, setDetAnomalyFilter] = useState<'all'|'divergent'|'red'>('all');
+  const [detFleetTypeFilter, setDetFleetTypeFilter] = useState<'all'|'fixed'|'spot'>('all');
   const [detPlateFilter, setDetPlateFilter] = useState('');
   const [detJustificationCategoryFilter, setDetJustificationCategoryFilter] = useState('');
   const [detSortConfig, setDetSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
@@ -343,11 +344,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         
         // --- DETAILED PLATE-BY-PLATE LOGIC ---
         const routesByDateAndPlate: Record<string, boolean> = {};
+        const routeSvcByDateAndPlate: Record<string, string> = {};
         fetchedRoutes.forEach(r => {
             routesByDateAndPlate[`${r.date}|${r.plate}`] = true;
+            routeSvcByDateAndPlate[`${r.date}|${r.plate}`] = r.xpt?.toUpperCase() === 'ESP8' ? 'XPT' : (r.svc_id || '');
         });
 
-        const reportCache: Record<string, {reason: string, reportId: string, fullJustifications: string}> = {};
+        const reportCache: Record<string, {reason: string, reportId: string, fullJustifications: string, svc_id: string}> = {};
         const svcReportMap: Record<string, any> = {};
         
         fetchedReports.forEach(rep => {
@@ -361,7 +364,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                             reportCache[`${rep.date}|${match[1]}`] = {
                                 reason: match[2].trim(),
                                 reportId: rep.id,
-                                fullJustifications: rep.justifications
+                                fullJustifications: rep.justifications,
+                                svc_id: rep.svc_id
                             };
                         }
                     });
@@ -371,13 +375,35 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
         const detailedData: any[] = [];
         const validFixedVehicles = fixedVehicles.filter(v => validSvcIds.includes(v.svc_id));
-        const allDates = Array.from(new Set([...Object.keys(grouped), ...fetchedRoutes.filter(r => validSvcIds.includes(r.svc_id) || r.svc_id === 'XPT').map(r => r.date)])).sort((a,b) => b.localeCompare(a));
+        const validFixedPlatesSet = new Set(validFixedVehicles.map(v => v.plate));
+        const allDates = Array.from(new Set([...Object.keys(grouped), ...fetchedRoutes.filter(r => validSvcIds.includes(r.svc_id)).map(r => r.date)])).sort((a,b) => b.localeCompare(a));
         
         allDates.forEach(date => {
             if (date >= startDate && date <= endDate) {
-                validFixedVehicles.forEach(v => {
-                    const plate = v.plate;
-                    const svc = v.svc_id;
+                const platesForDate = new Set<string>();
+                validFixedVehicles.forEach(v => platesForDate.add(v.plate));
+                
+                Object.keys(routesByDateAndPlate).forEach(key => {
+                    if (key.startsWith(`${date}|`)) platesForDate.add(key.split('|')[1]);
+                });
+                
+                Object.keys(reportCache).forEach(key => {
+                    if (key.startsWith(`${date}|`)) platesForDate.add(key.split('|')[1]);
+                });
+
+                platesForDate.forEach(plate => {
+                    const isFixed = validFixedPlatesSet.has(plate);
+                    const fleetType = isFixed ? 'Frota Fixa' : 'Próprio';
+                    
+                    let svc = '';
+                    if (isFixed) {
+                        svc = validFixedVehicles.find(v => v.plate === plate)?.svc_id || '';
+                    } else {
+                        svc = reportCache[`${date}|${plate}`]?.svc_id || routeSvcByDateAndPlate[`${date}|${plate}`] || '';
+                    }
+                    
+                    if (!svc || !validSvcIds.includes(svc)) return;
+
                     const didRun = routesByDateAndPlate[`${date}|${plate}`] || false;
                     const cacheEntry = reportCache[`${date}|${plate}`];
                     let reason = cacheEntry ? cacheEntry.reason : '';
@@ -401,7 +427,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                         didRun,
                         reason,
                         reportId,
-                        fullJustifications
+                        fullJustifications,
+                        fleetType
                     });
                 });
             }
@@ -2417,6 +2444,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 (!detPlateFilter || d.plate.toLowerCase().includes(detPlateFilter.toLowerCase())) &&
                 (!detJustificationCategoryFilter || (d.reason && d.reason.toLowerCase().includes(detJustificationCategoryFilter.toLowerCase()))) &&
                 (detStatusFilter === 'all' || (detStatusFilter === 'ran' ? d.didRun : !d.didRun)) &&
+                (detFleetTypeFilter === 'all' || (detFleetTypeFilter === 'fixed' ? d.fleetType === 'Frota Fixa' : d.fleetType === 'Próprio')) &&
                 (detAnomalyFilter === 'all' || 
                  (detAnomalyFilter === 'divergent' && (
                      (!d.didRun && d.reason && d.reason.toUpperCase().includes('RODOU')) ||
@@ -2454,9 +2482,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
              };
              
              const handleExportDetailedPlate = () => {
-                const rows = [["Data", "SVC", "Placa", "Carregou (1=Sim/0=Nao)", "Justificativa"]];
+                const rows = [["Data", "SVC", "Placa", "Frota", "Carregou (1=Sim/0=Nao)", "Justificativa"]];
                 finalDisplayedDetails.forEach(d => {
-                   rows.push([d.date.split('-').reverse().join('/'), d.svc, d.plate, d.didRun ? '1' : '0', d.reason]);
+                   rows.push([d.date.split('-').reverse().join('/'), d.svc, d.plate, d.fleetType, d.didRun ? '1' : '0', d.reason]);
                 });
                 const csvContent = rows.map(r => r.join(";")).join("\n");
                 const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -2671,7 +2699,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     );
                  })()}
 
-                 <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                 <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-7 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Filtrar por Placa</label>
                       <input 
@@ -2729,6 +2757,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                       </div>
                     </div>
                     <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Tipo de Frota</label>
+                      <div className="flex gap-2">
+                        <button onClick={() => setDetFleetTypeFilter('all')} className={`flex-1 py-1.5 sm:py-2.5 text-[10px] sm:text-xs font-bold rounded-xl transition-all ${detFleetTypeFilter === 'all' ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Todas</button>
+                        <button onClick={() => setDetFleetTypeFilter('fixed')} className={`flex-1 py-1.5 sm:py-2.5 text-[10px] sm:text-xs font-bold rounded-xl transition-all ${detFleetTypeFilter === 'fixed' ? 'bg-blue-500 text-white shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Fixa</button>
+                        <button onClick={() => setDetFleetTypeFilter('spot')} className={`flex-1 py-1.5 sm:py-2.5 text-[10px] sm:text-xs font-bold rounded-xl transition-all ${detFleetTypeFilter === 'spot' ? 'bg-indigo-500 text-white shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Próprio</button>
+                      </div>
+                    </div>
+                    <div>
                       <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Filtro de Anomalias</label>
                       <div className="flex gap-2">
                         <button onClick={() => setDetAnomalyFilter('all')} className={`flex-1 py-1.5 sm:py-2.5 text-[10px] sm:text-xs font-bold rounded-xl transition-all ${detAnomalyFilter === 'all' ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Todas</button>
@@ -2751,10 +2787,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                          <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('plate')}>
                            <div className="flex items-center gap-1">Placa {detSortConfig?.key === 'plate' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
                          </th>
+                         <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('fleetType')}>
+                           <div className="flex items-center gap-1">Frota {detSortConfig?.key === 'fleetType' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                         </th>
                          <th className="px-5 py-4 w-1/6 text-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('didRun')}>
                            <div className="flex items-center justify-center gap-1">Status (Carregou) {detSortConfig?.key === 'didRun' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
                          </th>
-                         <th className="px-5 py-4 w-2/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('reason')}>
+                         <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('reason')}>
                            <div className="flex items-center gap-1">Justificativa Reportada {detSortConfig?.key === 'reason' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
                          </th>
                        </tr>
@@ -2781,6 +2820,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                  </td>
                                  <td className="px-5 py-3.5 font-bold text-slate-800 dark:text-slate-200">{item.svc}</td>
                                  <td className="px-5 py-3.5"><span className="font-mono font-bold bg-slate-100 dark:bg-slate-900 rounded px-2.5 py-1 border border-slate-200 dark:border-slate-800">{item.plate}</span></td>
+                                 <td className="px-5 py-3.5"><span className={`text-[11px] font-bold px-2 py-1 rounded ${item.fleetType === 'Frota Fixa' ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'}`}>{item.fleetType}</span></td>
                                  <td className="px-5 py-3.5 text-center">
                                      {item.didRun ? (
                                         <span className="px-2.5 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 shadow-sm border border-emerald-200 dark:border-emerald-800/50">
