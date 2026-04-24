@@ -220,7 +220,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         ]);
         
         const validSvcIds = svcs
-          .filter(svc => mercadoLivreSvcs.includes(svc.id) && svc.name !== 'FIRST MILE')
+          .filter(svc => mercadoLivreSvcs.includes(svc.id) && svc.name !== 'FIRST MILE' && svc.id !== 'XPT')
           .map(svc => svc.id);
 
         const validFixedPlates = fixedVehicles
@@ -476,6 +476,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         ]);
 
         const currentFixedVehicles = fixedVehicles.filter(v => 
+            v.svc_id !== 'XPT' &&
             (!weeklyRegionalFilter || MAPEAMENTO_REGIONAIS[weeklyRegionalFilter]?.includes(v.svc_id)) &&
             (weeklySvcFilter === '' || v.svc_id === weeklySvcFilter)
         );
@@ -494,7 +495,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         });
 
         fetchedReports.forEach(rep => {
-            if ((!weeklyRegionalFilter || MAPEAMENTO_REGIONAIS[weeklyRegionalFilter]?.includes(rep.svc_id)) &&
+            if (rep.svc_id !== 'XPT' &&
+                (!weeklyRegionalFilter || MAPEAMENTO_REGIONAIS[weeklyRegionalFilter]?.includes(rep.svc_id)) &&
                 (weeklySvcFilter === '' || rep.svc_id === weeklySvcFilter)) {
                 // Populate Spot Offer
                 INITIAL_CATEGORIES.forEach(cat => {
@@ -521,7 +523,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         const spotRanCounts: Record<string, number> = {};
         fetchedRoutes.forEach(r => {
              const svc = r.xpt?.toUpperCase() === 'ESP8' ? 'XPT' : (r.svc_id || '');
-             if ((!weeklyRegionalFilter || MAPEAMENTO_REGIONAIS[weeklyRegionalFilter]?.includes(svc)) &&
+             if (svc !== 'XPT' &&
+                 (!weeklyRegionalFilter || MAPEAMENTO_REGIONAIS[weeklyRegionalFilter]?.includes(svc)) &&
                  (weeklySvcFilter === '' || svc === weeklySvcFilter)) {
                  if (!validFixedPlates.includes(r.plate)) {
                      spotRanCounts[r.date] = (spotRanCounts[r.date] || 0) + 1;
@@ -669,7 +672,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         const fetchedRoutes = await getDailyRoutesByDate(selectedDate);
         
         const validSvcIds = svcs
-          .filter(svc => mercadoLivreSvcs.includes(svc.id) && svc.name !== 'FIRST MILE')
+          .filter(svc => mercadoLivreSvcs.includes(svc.id) && svc.name !== 'FIRST MILE' && svc.id !== 'XPT')
           .map(svc => svc.id);
 
         const validFixedPlates = fixedVehicles
