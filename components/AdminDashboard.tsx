@@ -2439,6 +2439,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           {/* DETALHAMENTO PLACA A PLACA */}
           {utilActiveTab === 'details' && detailedUtilizationData.length > 0 && (() => {
              const filteredDetails = detailedUtilizationData.filter(d => 
+                d.svc !== 'XPT' &&
                 (!detRegionalFilter || MAPEAMENTO_REGIONAIS[detRegionalFilter]?.includes(d.svc)) &&
                 (!detSvcFilter || d.svc === detSvcFilter) &&
                 (!detPlateFilter || d.plate.toLowerCase().includes(detPlateFilter.toLowerCase())) &&
