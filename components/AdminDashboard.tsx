@@ -376,7 +376,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         const detailedData: any[] = [];
         const validFixedVehicles = fixedVehicles.filter(v => validSvcIds.includes(v.svc_id));
         const validFixedPlatesSet = new Set(validFixedVehicles.map(v => v.plate));
-        const allDates = Array.from(new Set([...Object.keys(grouped), ...fetchedRoutes.filter(r => validSvcIds.includes(r.svc_id)).map(r => r.date)])).sort((a,b) => b.localeCompare(a));
+        // Inclui TODAS as datas de reports, rotas e reportCache para não perder nenhuma placa
+        const allDatesFromReportCache = Object.keys(reportCache).map(k => k.split('|')[0]);
+        const allDates = Array.from(new Set([
+            ...Object.keys(grouped),
+            ...fetchedRoutes.filter(r => validSvcIds.includes(r.svc_id)).map(r => r.date),
+            ...allDatesFromReportCache
+        ])).sort((a,b) => b.localeCompare(a));
         
         allDates.forEach(date => {
             if (date >= startDate && date <= endDate) {
@@ -413,10 +419,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     const fullJustifications = cacheEntry ? cacheEntry.fullJustifications : (svcEntry ? svcEntry.justifications : null);
                     
                     if (didRun && !reason) {
+                        // Rota existe, despachante não preencheu justificativa → rodou via rota
                         reason = 'RODOU (Identificado via Rota)';
-                    } else if (didRun && !reason.includes('RODOU')) {
+                    } else if (didRun && reason && !reason.toUpperCase().includes('RODOU')) {
+                        // Rota existe mas despachante registrou outra coisa → marcar que rodou
                         reason = `[RODOU] ${reason}`;
+                    } else if (didRun && reason && reason.toUpperCase().includes('RODOU')) {
+                        // Rota existe E despachante marcou RODOU → confirmado, mantém como está
+                        // reason já está correto (ex: 'RODOU')
+                    } else if (!didRun && reason && reason.toUpperCase() === 'RODOU') {
+                        // Despachante marcou RODOU mas NÃO há rota importada → divergência
+                        reason = 'RODOU';
                     } else if (!didRun && !reason) {
+                        // Sem rota e sem justificativa → problema
                         reason = 'Sem justificativa preenchida';
                     }
 
