@@ -1571,6 +1571,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           }
         });
         if (payloadToInsert.length > 0) {
+          const uniqueDates = Array.from(new Set(payloadToInsert.map(p => p.date)));
+          
+          for (const date of uniqueDates) {
+              const reportsForDate = await getReportsByDate(date);
+              if (!reportsForDate || reportsForDate.length === 0) {
+                  setDoubleCheckError(`Ação bloqueada: Os formulários (justificativas) do dia ${date} ainda não estão no sistema. Aguarde o envio do forms antes de subir a correção de anomalias.`);
+                  setImportLoadingDoubleCheck(false);
+                  return;
+              }
+
+              const routesForDate = await getDailyRoutesByDate(date);
+              const mainRoutes = routesForDate.filter((r: any) => !r.route_id.startsWith('DBLCHK'));
+              if (mainRoutes.length === 0) {
+                  setDoubleCheckError(`Ação bloqueada: Você precisa importar a planilha principal de Rotas do dia ${date} ANTES de subir a correção (Double Check) para evitar duplicidade de placas.`);
+                  setImportLoadingDoubleCheck(false);
+                  return;
+              }
+          }
+
           await saveDailyRoutes(payloadToInsert);
           setImportSuccessDoubleCheck(true);
           setDoubleCheckError(null);
