@@ -687,7 +687,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         const fetchedRoutes = await getDailyRoutesByDate(selectedDate);
         
         const validSvcIds = svcs
-          .filter(svc => mercadoLivreSvcs.includes(svc.id) && svc.name !== 'FIRST MILE' && svc.id !== 'XPT')
+          .filter(svc => mercadoLivreSvcs.includes(svc.id) && svc.name !== 'FIRST MILE')
           .map(svc => svc.id);
 
         const validFixedPlates = fixedVehicles
@@ -970,6 +970,399 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     link.click();
     document.body.removeChild(link);
     setExportLoading(false);
+  };
+
+  const generateOfferSpotCSVString = async (dateStr: string) => {
+    const [fetchedReports, fetchedRoutes] = await Promise.all([
+      getReportsByDateRange(dateStr, dateStr),
+      getDailyRoutesByDateRange(dateStr, dateStr)
+    ]);
+    
+    const mapVehicleToCategory = (rawType: string): string => {
+        const t = rawType.toUpperCase().trim();
+        if (['BULK - VUC EQUIPE ÚNICA POOL', 'UTILITÁRIOS', 'BULK - VAN EQUIPE ÚNICA POOL', 'VAN', 'VEÍCULO DE PASSEIO', 'VUC'].includes(t)) return t;
+        return ''; 
+    };
+
+    const utilizationGroups: Record<string, Set<string>> = {}; 
+    const utilizationCounts: Record<string, number> = {}; 
+    fetchedRoutes.forEach(route => {
+        const routeXpt = (route.xpt || '').trim().toUpperCase();
+        const svc = routeXpt === 'ESP8' ? 'XPT' : (route.svc_id || '').trim();
+        const mappedType = mapVehicleToCategory(route.vehicle_type);
+        if (!svc || !mappedType) return;
+        const key = `${route.date}|${svc}|${mappedType}`;
+        if (!utilizationGroups[key]) utilizationGroups[key] = new Set();
+        utilizationGroups[key].add(route.plate);
+        utilizationCounts[key] = (utilizationCounts[key] || 0) + 1;
+    });
+
+    const combinedData: Record<string, { Date: string, Svc: string, Modals: Record<string, { Offer: number, Utilized: number, UtilizedRoutes: number }> }> = {};
+    fetchedReports.forEach(report => {
+        const combinedKey = `${report.date}|${report.svc_id}`;
+        if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: report.date, Svc: report.svc_id, Modals: {} };
+        INITIAL_CATEGORIES.forEach(cat => {
+            const modalName = cat.name.toUpperCase();
+            if (!combinedData[combinedKey].Modals[modalName]) combinedData[combinedKey].Modals[modalName] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
+            combinedData[combinedKey].Modals[modalName].Offer += (report[`offer_${cat.id.replace(/-/g, '_')}`] || 0);
+        });
+    });
+
+    Object.keys(utilizationGroups).forEach(key => {
+        const [date, svc, vehicleType] = key.split('|');
+        const combinedKey = `${date}|${svc}`;
+        if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: date, Svc: svc, Modals: {} };
+        if (!combinedData[combinedKey].Modals[vehicleType]) combinedData[combinedKey].Modals[vehicleType] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
+        combinedData[combinedKey].Modals[vehicleType].Utilized += utilizationGroups[key].size;
+        combinedData[combinedKey].Modals[vehicleType].UtilizedRoutes += utilizationCounts[key];
+    });
+
+    const finalDirData: any[] = [];
+    Object.values(combinedData).forEach(entry => {
+        Object.keys(entry.Modals).forEach(modalName => {
+            const item = entry.Modals[modalName];
+            if (item.Offer > 0 || item.Utilized > 0 || item.UtilizedRoutes > 0) {
+               finalDirData.push({
+                  date: entry.Date,
+                  svc: entry.Svc,
+                  modal: modalName,
+                  offer: item.Offer,
+                  utilized: item.Utilized,
+                  utilizedRoutes: item.UtilizedRoutes
+               });
+            }
+        });
+    });
+
+    // Consolidate logic as default for CSV export
+    const grouped: Record<string, any> = {};
+    finalDirData.forEach(item => {
+       const key = `${item.date}|${item.svc}`;
+       if (!grouped[key]) grouped[key] = { date: item.date, svc: item.svc, modal: 'CONSOLIDADO', offer: 0, utilized: 0, utilizedRoutes: 0 };
+       grouped[key].offer += item.offer;
+       grouped[key].utilized += item.utilized;
+       grouped[key].utilizedRoutes += item.utilizedRoutes;
+    });
+    const displayData = Object.values(grouped).sort((a,b) => a.svc.localeCompare(b.svc));
+
+    const rows = [["Data", "Polo/SVC", "Modal", "Oferta", "Utilizado (Placas)", "Rotas Totais", "Performance/Aprov."]];
+    displayData.forEach(item => {
+        const itemPerc = item.offer > 0 ? ((item.utilized / item.offer) * 100).toFixed(0) : '0';
+        rows.push([
+            item.date.split('-').reverse().join('/'),
+            item.svc,
+            item.modal,
+            item.offer.toString(),
+            item.utilized.toString(),
+            item.utilizedRoutes.toString(),
+            `${itemPerc}%`
+        ]);
+    });
+    return "\uFEFF" + rows.map(r => r.join(";")).join("\n");
+  };
+
+  const generateDetailedPlateDataAndCSV = async (dateStr: string) => {
+    const [fetchedRoutes, fetchedReports] = await Promise.all([
+        getDailyRoutesByDate(dateStr),
+        getReportsByDate(dateStr)
+    ]);
+    
+    const validSvcIds = svcs
+      .filter(svc => mercadoLivreSvcs.includes(svc.id) && svc.name !== 'FIRST MILE' && svc.id !== 'XPT')
+      .map(svc => svc.id);
+
+    const routesByDateAndPlate: Record<string, boolean> = {};
+    const routeSvcByDateAndPlate: Record<string, string> = {};
+    fetchedRoutes.forEach(r => {
+        routesByDateAndPlate[`${r.date}|${r.plate}`] = true;
+        routeSvcByDateAndPlate[`${r.date}|${r.plate}`] = r.xpt?.toUpperCase() === 'ESP8' ? 'XPT' : (r.svc_id || '');
+    });
+
+    const reportCache: Record<string, {reason: string, svc_id: string}> = {};
+    fetchedReports.forEach(rep => {
+        if (validSvcIds.includes(rep.svc_id)) {
+            if (rep.justifications) {
+                const justs = rep.justifications.split('; ');
+                justs.forEach((j: string) => {
+                    const match = j.match(/"?([A-Za-z0-9-]+)"?\s*-\s*(.*)/);
+                    if (match) {
+                        reportCache[`${rep.date}|${match[1]}`] = { reason: match[2].trim(), svc_id: rep.svc_id };
+                    }
+                });
+            }
+        }
+    });
+
+    const detailedData: any[] = [];
+    const validFixedVehicles = fixedVehicles.filter(v => validSvcIds.includes(v.svc_id));
+    const validFixedPlatesSet = new Set(validFixedVehicles.map(v => v.plate));
+    
+    const platesForDate = new Set<string>();
+    validFixedVehicles.forEach(v => platesForDate.add(v.plate));
+    Object.keys(routesByDateAndPlate).forEach(key => { if (key.startsWith(`${dateStr}|`)) platesForDate.add(key.split('|')[1]); });
+    Object.keys(reportCache).forEach(key => { if (key.startsWith(`${dateStr}|`)) platesForDate.add(key.split('|')[1]); });
+
+    platesForDate.forEach(plate => {
+        const isFixed = validFixedPlatesSet.has(plate);
+        const fleetType = isFixed ? 'Frota Fixa' : 'Próprio';
+        let svc = isFixed ? (validFixedVehicles.find(v => v.plate === plate)?.svc_id || '') : (reportCache[`${dateStr}|${plate}`]?.svc_id || routeSvcByDateAndPlate[`${dateStr}|${plate}`] || '');
+        if (!svc || !validSvcIds.includes(svc)) return;
+
+        const didRun = routesByDateAndPlate[`${dateStr}|${plate}`] || false;
+        const cacheEntry = reportCache[`${dateStr}|${plate}`];
+        let reason = cacheEntry ? cacheEntry.reason : '';
+        
+        if (didRun && !reason) reason = 'RODOU (Identificado via Rota)';
+        else if (didRun && reason && !reason.toUpperCase().includes('RODOU')) reason = `[RODOU] ${reason}`;
+        else if (!didRun && reason && reason.toUpperCase() === 'RODOU') reason = 'RODOU';
+        else if (!didRun && !reason) reason = 'Sem justificativa preenchida';
+
+        detailedData.push({ date: dateStr, svc, plate, didRun, reason, fleetType });
+    });
+
+    const rows = [["Data", "SVC", "Placa", "Frota", "Carregou (1=Sim/0=Nao)", "Justificativa"]];
+    detailedData.forEach(d => {
+       rows.push([d.date.split('-').reverse().join('/'), d.svc, d.plate, d.fleetType, d.didRun ? '1' : '0', d.reason]);
+    });
+    const csvString = "\uFEFF" + rows.map(r => r.join(";")).join("\n");
+    return { detailedData, csvString };
+  };
+
+  const generateWeeklyCSVString = async (dateStr: string) => {
+    const dateObj = new Date(dateStr + 'T00:00:00');
+    const dayOfWeek = dateObj.getDay(); 
+    const sunday = new Date(dateObj);
+    sunday.setDate(dateObj.getDate() - dayOfWeek);
+    
+    const daysArray: {date: string}[] = [];
+    for (let i = 0; i < 7; i++) {
+       const d = new Date(sunday);
+       d.setDate(sunday.getDate() + i);
+       daysArray.push({ date: getLocalDateString(d) });
+    }
+    const startStr = daysArray[0].date;
+    const endStr = daysArray[6].date;
+    
+    const [fetchedReports, fetchedRoutes] = await Promise.all([
+      getReportsByDateRange(startStr, endStr),
+      getDailyRoutesByDateRange(startStr, endStr)
+    ]);
+
+    const currentFixedVehicles = fixedVehicles.filter(v => v.svc_id !== 'XPT');
+    const validFixedPlates = currentFixedVehicles.map(v => v.plate);
+    
+    const routesByDateAndPlate: Record<string, boolean> = {};
+    fetchedRoutes.forEach(r => { routesByDateAndPlate[`${r.date}|${r.plate}`] = true; });
+
+    const reportCache: Record<string, {reason: string}> = {};
+    fetchedReports.forEach(rep => {
+        if (rep.svc_id !== 'XPT' && rep.justifications) {
+            const justs = rep.justifications.split('; ');
+            justs.forEach((j: string) => {
+                const match = j.match(/"?([A-Za-z0-9-]+)"?\s*-\s*(.*)/);
+                if (match) reportCache[`${rep.date}|${match[1]}`] = { reason: match[2].trim() };
+            });
+        }
+    });
+
+    const plateRows: any[] = [];
+    validFixedPlates.forEach(plate => {
+         const rowDays: Record<string, any> = {};
+         let daysRan = 0;
+         daysArray.forEach(day => {
+              const dStr = day.date;
+              const didRun = routesByDateAndPlate[`${dStr}|${plate}`] || false;
+              const cacheEntry = reportCache[`${dStr}|${plate}`];
+              let reason = cacheEntry ? cacheEntry.reason : '';
+
+              if (didRun && !reason) reason = 'RODOU (Identificado via Rota)';
+              else if (didRun && !reason.includes('RODOU')) reason = `[RODOU] ${reason}`;
+
+              if (didRun) daysRan++;
+              rowDays[dStr] = { didRun, reason };
+         });
+
+         plateRows.push({
+             plate,
+             svc: currentFixedVehicles.find(v => v.plate === plate)?.svc_id || '',
+             days: rowDays,
+             utilizationPuraPerc: (daysRan / 7) * 100,
+             utilizationMeliPerc: ((daysRan * 1.162790698) / 7) * 100
+         });
+    });
+
+    const rows = [["SVC", "Placa", "Domingo", "Segunda", "Terca", "Quarta", "Quinta", "Sexta", "Sabado", "Utilizacao Pura (%)", "Utilizacao Meli (%)"]];
+    plateRows.forEach(row => {
+       const dDays = daysArray.map(d => {
+          const cell = row.days[d.date];
+          if (!cell) return "-";
+          if (cell.didRun) return "RODOU";
+          if (!cell.didRun && cell.reason && cell.reason !== 'Sem justificativa preenchida') return cell.reason;
+          return "Faltou/Sem Dado";
+       });
+       rows.push([row.svc, row.plate, ...dDays, row.utilizationPuraPerc.toFixed(1), row.utilizationMeliPerc.toFixed(1)]);
+    });
+    return "\uFEFF" + rows.map(r => r.join(";")).join("\n");
+  };
+
+  const handleSendEmailSummary = async () => {
+    if (summaryData.length === 0) return;
+
+    // Coloque aqui os e-mails que devem vir pré-preenchidos toda vez:
+    const DEFAULT_EMAILS = "Alexsandro Oliveira <alexsandro.oliveira@transmana.com.br>, Sergio Brito <sergio.brito@transmana.com.br>, rodrigo.coppola@transmana.com.br, Rodrigo Bombein <rodrigo.bombein@transmana.com.br>, hitalo.correa@transmana.com.br, Filipe Ragel <filipe.rangel@transmana.com.br>, hcpproenca@hotmail.com";
+
+    const emails = DEFAULT_EMAILS.split(',').map(e => e.trim()).filter(Boolean);
+    if (emails.length === 0) return;
+
+    setExportLoading(true);
+
+    const reportDate = selectedDate.split('-').reverse().join('/');
+
+    // Generate detailed data for Placa a Placa AND to precisely filter "Sem Driver"
+    const { detailedData, csvString: plateCsv } = await generateDetailedPlateDataAndCSV(selectedDate);
+    const spotCsv = await generateOfferSpotCSVString(selectedDate);
+    const weeklyCsv = await generateWeeklyCSVString(selectedDate);
+
+    // Filter Sem Driver directly from the consolidated detailedData (matches exactly what WhatsApp gets)
+    let semDriverList: { regional: string, svc: string, plate: string }[] = [];
+    detailedData.forEach(d => {
+        if (d.reason && d.reason.toLowerCase().includes('sem drive')) {
+            let regional = "Desconhecida";
+            for (const [reg, sList] of Object.entries(MAPEAMENTO_REGIONAIS)) {
+                if (sList.includes(d.svc)) {
+                    regional = reg;
+                    break;
+                }
+            }
+            semDriverList.push({ regional, svc: d.svc, plate: d.plate });
+        }
+    });
+    // Sort Sem Driver by Regional -> SVC
+    semDriverList.sort((a, b) => a.regional.localeCompare(b.regional) || a.svc.localeCompare(b.svc));
+
+    const totalOfferSpot = summaryData.reduce((acc, c) => acc + c.offerSpot, 0);
+    const totalRanSpot = summaryData.reduce((acc, c) => acc + c.ranSpot, 0);
+    const totalFixed = summaryData.reduce((acc, c) => acc + c.fixedTotal, 0);
+    const totalFixedRan = summaryData.reduce((acc, c) => acc + c.fixedRan, 0);
+    const totalFixedIdle = summaryData.reduce((acc, c) => acc + c.fixedIdle, 0);
+
+    let htmlBody = `
+      <div style="font-family: Arial, sans-serif; color: #333; max-width: 800px; margin: 0 auto;">
+        <p>Bom dia</p>
+        <p>Segue resumo da utilização dos carros Frota Fixa e Spots referentes ao dia ${reportDate}.</p>
+        
+        <h2 style="color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 30px;">📊 TOTAL GERAL</h2>
+        <ul style="font-size: 15px; line-height: 1.6;">
+          <li><strong>Total Ofertas (SPOT):</strong> ${totalOfferSpot}</li>
+          <li><strong>Total Rodou (SPOT):</strong> ${totalRanSpot}</li>
+          <li><strong>Frota Fixa Cadastrada:</strong> ${totalFixed}</li>
+          <li><strong>Frota Fixa Rodou:</strong> ${totalFixedRan}</li>
+          <li><strong>Frota Fixa Parada:</strong> ${totalFixedIdle}</li>
+        </ul>
+
+        <h2 style="color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 30px;">🚨 CARROS SEM DRIVER</h2>
+        ${semDriverList.length > 0 ? `
+          <p>Temos <strong>${semDriverList.length}</strong> veículos classificados como "Sem Driver":</p>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
+            <thead>
+              <tr style="background-color: #f8f9fa;">
+                <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Regional</th>
+                <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">SVC</th>
+                <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Placa</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${semDriverList.map(item => `
+                <tr>
+                  <td style="padding: 10px; border: 1px solid #ddd;">${item.regional}</td>
+                  <td style="padding: 10px; border: 1px solid #ddd;">${item.svc}</td>
+                  <td style="padding: 10px; border: 1px solid #ddd;">${item.plate}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        ` : `<p>Nenhum veículo sem driver registrado nesta data.</p>`}
+
+        <h2 style="color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 30px;">📈 UTILIZAÇÃO FROTA FIXA (OFENSORES NO TOPO)</h2>
+    `;
+
+    const sortedByFixed = [...summaryData]
+      .filter(row => row.fixedTotal > 0)
+      .sort((a, b) => {
+        const utilA = (a.fixedRan / a.fixedTotal);
+        const utilB = (b.fixedRan / b.fixedTotal);
+        return utilA - utilB;
+      });
+
+    sortedByFixed.forEach(row => {
+      const fixaUtil = (row.fixedRan / row.fixedTotal) * 100;
+      const color = fixaUtil >= 80 ? '#4caf50' : fixaUtil >= 50 ? '#ff9800' : '#f44336';
+      
+      htmlBody += `
+        <div style="margin-bottom: 12px; padding: 10px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa;">
+          <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 5px;">
+            <span><strong>${row.svc}</strong> (Total ${row.fixedTotal} | Rodaram ${row.fixedRan} | Parados ${row.fixedIdle})</span>
+            <span style="font-weight: bold; color: ${color};">${fixaUtil.toFixed(1)}%</span>
+          </div>
+          <div style="background: #e0e0e0; width: 100%; height: 16px; border-radius: 8px; overflow: hidden; clear: both;">
+            <div style="background: ${color}; width: ${Math.min(fixaUtil, 100)}%; height: 100%;"></div>
+          </div>
+        </div>
+      `;
+    });
+
+    htmlBody += `<h2 style="color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 40px;">📈 APROVEITAMENTO SPOT (OFENSORES NO TOPO)</h2>`;
+
+    const sortedBySpot = [...summaryData]
+      .filter(row => row.offerSpot > 0)
+      .sort((a, b) => {
+        const utilA = (a.ranSpot / a.offerSpot);
+        const utilB = (b.ranSpot / b.offerSpot);
+        return utilA - utilB;
+      });
+
+    sortedBySpot.forEach(row => {
+      const spotAprov = (row.ranSpot / row.offerSpot) * 100;
+      const color = spotAprov >= 80 ? '#03a9f4' : spotAprov >= 50 ? '#ff9800' : '#f44336';
+      
+      htmlBody += `
+        <div style="margin-bottom: 12px; padding: 10px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa;">
+          <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 5px;">
+            <span><strong>${row.svc}</strong> (Ofertados ${row.offerSpot} | Rodaram ${row.ranSpot})</span>
+            <span style="font-weight: bold; color: ${color};">${spotAprov.toFixed(1)}%</span>
+          </div>
+          <div style="background: #e0e0e0; width: 100%; height: 16px; border-radius: 8px; overflow: hidden; clear: both;">
+            <div style="background: ${color}; width: ${Math.min(spotAprov, 100)}%; height: 100%;"></div>
+          </div>
+        </div>
+      `;
+    });
+
+    htmlBody += `</div>`;
+
+    const subject = `Resumo Executivo Diário Transmaná - ${reportDate}`;
+
+    try {
+      const toBase64 = (str: string) => btoa(unescape(encodeURIComponent(str)));
+
+      const attachments = [
+        { filename: `Oferta_SPOT_${reportDate.replace(/\//g, '-')}.csv`, content: toBase64(spotCsv) },
+        { filename: `Placa_a_Placa_${reportDate.replace(/\//g, '-')}.csv`, content: toBase64(plateCsv) },
+        { filename: `Visao_Semanal_${reportDate.replace(/\//g, '-')}.csv`, content: toBase64(weeklyCsv) }
+      ];
+
+      const { data, error } = await supabase.functions.invoke('send-email', {
+        body: { to: emails, subject, body: htmlBody, attachments }
+      });
+
+      if (error) throw error;
+      alert("E-mail enviado com sucesso com os 3 anexos!");
+    } catch (e: any) {
+      console.error(e);
+      alert("Erro ao enviar o e-mail: " + e.message);
+    } finally {
+      setExportLoading(false);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1348,24 +1741,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                    <p className="text-xs text-slate-500 dark:text-slate-400">Métricas consolidadas por SVC (Fixa vs Spot)</p>
                 </div>
              </div>
-             <button 
-                onClick={async () => {
-                   const el = document.getElementById('export-summary-container');
-                   if (!el) return;
-                   
-                   const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#f8fafc' });
-                   const imgData = canvas.toDataURL('image/png');
-                   const link = document.createElement('a');
-                   link.href = imgData;
-                   link.download = `Resumo_Consolidado_${selectedDate}.png`;
-                   link.click();
-                }}
-                disabled={summaryLoading}
-                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-             >
-                <span className="material-symbols-outlined">image</span>
-                Salvar como Imagem
-             </button>
+             <div className="flex items-center gap-3">
+               <button 
+                  onClick={async () => {
+                     const el = document.getElementById('export-summary-container');
+                     if (!el) return;
+                     
+                     const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#f8fafc' });
+                     const imgData = canvas.toDataURL('image/png');
+                     const link = document.createElement('a');
+                     link.href = imgData;
+                     link.download = `Resumo_Consolidado_${selectedDate}.png`;
+                     link.click();
+                  }}
+                  disabled={summaryLoading}
+                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+               >
+                  <span className="material-symbols-outlined">image</span>
+                  Salvar como Imagem
+               </button>
+               <button 
+                  onClick={handleSendEmailSummary}
+                  disabled={summaryLoading || summaryData.length === 0}
+                  className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+               >
+                  <span className="material-symbols-outlined">mail</span>
+                  Enviar por Email
+               </button>
+             </div>
           </div>
 
           {summaryLoading ? (
