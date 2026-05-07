@@ -1351,11 +1351,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         { filename: `Visao_Semanal_${reportDate.replace(/\//g, '-')}.csv`, content: toBase64(weeklyCsv) }
       ];
 
-      const { data, error } = await supabase.functions.invoke('send-email', {
-        body: { to: emails, subject, body: htmlBody, attachments }
+      await fetch('https://script.google.com/macros/s/AKfycbyxsFTZSZVL_BtnLv1jPUdXKMjat_zpCrIO5ylFqxUJeRozgZbwM3OUakiYoSl5in4T/exec', {
+        method: 'POST',
+        mode: 'no-cors',
+        body: JSON.stringify({ to: emails, subject, body: htmlBody, attachments })
       });
 
-      if (error) throw error;
       alert("E-mail enviado com sucesso com os 3 anexos!");
     } catch (e: any) {
       console.error(e);
