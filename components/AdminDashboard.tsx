@@ -119,6 +119,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [summaryData, setSummaryData] = useState<any[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(false);
 
+  const [emailPreviewOpen, setEmailPreviewOpen] = useState(false);
+  const [emailPreviewData, setEmailPreviewData] = useState<{to: string[], subject: string, body: string, attachments: any[]} | null>(null);
+
+  const confirmSendEmail = async () => {
+    if (!emailPreviewData) return;
+    setExportLoading(true);
+    setEmailPreviewOpen(false);
+    try {
+      await fetch('https://script.google.com/macros/s/AKfycbyxsFTZSZVL_BtnLv1jPUdXKMjat_zpCrIO5ylFqxUJeRozgZbwM3OUakiYoSl5in4T/exec', {
+        method: 'POST',
+        mode: 'no-cors',
+        body: JSON.stringify(emailPreviewData)
+      });
+      alert("E-mail enviado com sucesso com os 3 anexos!");
+    } catch (e: any) {
+      console.error(e);
+      alert("Erro ao enviar o e-mail: " + e.message);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
   const handleSaveJustification = async (date: string, plate: string, reportId: string, fullJustifications: string) => {
     if (!reportId) {
       alert("Não é possível salvar: o relatório diário para este SVC nesta data ainda não foi criado pelo despachante.");
@@ -1351,16 +1373,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         { filename: `Visao_Semanal_${reportDate.replace(/\//g, '-')}.csv`, content: toBase64(weeklyCsv) }
       ];
 
-      await fetch('https://script.google.com/macros/s/AKfycbyxsFTZSZVL_BtnLv1jPUdXKMjat_zpCrIO5ylFqxUJeRozgZbwM3OUakiYoSl5in4T/exec', {
-        method: 'POST',
-        mode: 'no-cors',
-        body: JSON.stringify({ to: emails, subject, body: htmlBody, attachments })
-      });
-
-      alert("E-mail enviado com sucesso com os 3 anexos!");
+      setEmailPreviewData({ to: emails, subject, body: htmlBody, attachments });
+      setEmailPreviewOpen(true);
     } catch (e: any) {
       console.error(e);
-      alert("Erro ao enviar o e-mail: " + e.message);
+      alert("Erro ao gerar preview do e-mail: " + e.message);
     } finally {
       setExportLoading(false);
     }
@@ -3610,6 +3627,73 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           </div>
         </div>
       ) : null}
+
+      {/* Email Preview Modal */}
+      {emailPreviewOpen && emailPreviewData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-slate-200 dark:border-slate-700">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
+              <div>
+                <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
+                  <span className="material-symbols-outlined text-indigo-600">visibility</span>
+                  Preview do E-mail
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">Verifique o conteúdo antes de confirmar o envio</p>
+              </div>
+              <button 
+                onClick={() => setEmailPreviewOpen(false)}
+                className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              <div className="space-y-2 text-sm border-b border-slate-100 dark:border-slate-800 pb-4">
+                <div className="flex gap-2">
+                  <span className="font-bold text-slate-500 w-16">Para:</span>
+                  <span className="text-slate-700 dark:text-slate-300">{emailPreviewData.to.join(', ')}</span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="font-bold text-slate-500 w-16">Assunto:</span>
+                  <span className="text-slate-700 dark:text-slate-300 font-medium">{emailPreviewData.subject}</span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="font-bold text-slate-500 w-16">Anexos:</span>
+                  <span className="text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[16px] text-amber-500">attachment</span>
+                    {emailPreviewData.attachments.map((a: any) => a.filename).join(', ')}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="bg-white dark:bg-slate-950 p-6 rounded-xl border border-slate-200 dark:border-slate-800 text-sm email-preview-content"
+                   dangerouslySetInnerHTML={{ __html: emailPreviewData.body }} />
+            </div>
+            
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/80 flex justify-end gap-3">
+              <button 
+                onClick={() => setEmailPreviewOpen(false)}
+                className="px-5 py-2.5 font-bold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={confirmSendEmail}
+                disabled={exportLoading}
+                className="px-6 py-2.5 font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
+              >
+                {exportLoading ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                ) : (
+                  <span className="material-symbols-outlined text-[18px]">send</span>
+                )}
+                Confirmar Envio
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
