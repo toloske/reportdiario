@@ -655,14 +655,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             utilizationCounts[key] = (utilizationCounts[key] || 0) + 1;
         });
 
-        const combinedData: Record<string, { Date: string, Svc: string, Modals: Record<string, { Offer: number, Utilized: number, UtilizedRoutes: number }> }> = {};
+        const combinedData: Record<string, { Date: string, Svc: string, Modals: Record<string, { Offer: number, Capacity: number, Utilized: number, UtilizedRoutes: number }> }> = {};
         fetchedReports.forEach(report => {
             const combinedKey = `${report.date}|${report.svc_id}`;
             if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: report.date, Svc: report.svc_id, Modals: {} };
             INITIAL_CATEGORIES.forEach(cat => {
                 const modalName = cat.name.toUpperCase();
-                if (!combinedData[combinedKey].Modals[modalName]) combinedData[combinedKey].Modals[modalName] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
+                if (!combinedData[combinedKey].Modals[modalName]) combinedData[combinedKey].Modals[modalName] = { Offer: 0, Capacity: 0, Utilized: 0, UtilizedRoutes: 0 };
                 combinedData[combinedKey].Modals[modalName].Offer += (report[`offer_${cat.id.replace(/-/g, '_')}`] || 0);
+                combinedData[combinedKey].Modals[modalName].Capacity += (report[`capacity_${cat.id.replace(/-/g, '_')}`] || 0);
             });
         });
 
@@ -672,7 +673,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             const [date, svc, vehicleType] = key.split('|');
             const combinedKey = `${date}|${svc}`;
             if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: date, Svc: svc, Modals: {} };
-            if (!combinedData[combinedKey].Modals[vehicleType]) combinedData[combinedKey].Modals[vehicleType] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
+            if (!combinedData[combinedKey].Modals[vehicleType]) combinedData[combinedKey].Modals[vehicleType] = { Offer: 0, Capacity: 0, Utilized: 0, UtilizedRoutes: 0 };
             combinedData[combinedKey].Modals[vehicleType].Utilized += utilizationGroups[key].size;
             combinedData[combinedKey].Modals[vehicleType].UtilizedRoutes += utilizationCounts[key];
         });
@@ -681,12 +682,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         Object.values(combinedData).forEach(entry => {
             Object.keys(entry.Modals).forEach(modalName => {
                 const item = entry.Modals[modalName];
-                if (item.Offer > 0 || item.Utilized > 0 || item.UtilizedRoutes > 0) {
+                if (item.Offer > 0 || item.Capacity > 0 || item.Utilized > 0 || item.UtilizedRoutes > 0) {
                    finalDirData.push({
                       date: entry.Date,
                       svc: entry.Svc,
                       modal: modalName,
                       offer: item.Offer,
+                      capacity: item.Capacity,
                       utilized: item.Utilized,
                       utilizedRoutes: item.UtilizedRoutes
                    });
@@ -722,6 +724,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
            summaryMap[svc] = {
              svc,
              offerSpot: 0,
+             capacitySpot: 0,
              ranSpot: 0,
              fixedTotal: fixedVehicles.filter(v => v.svc_id === svc).length,
              fixedRan: 0,
@@ -732,8 +735,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         fetchedReports.forEach(rep => {
            if (validSvcIds.includes(rep.svc_id)) {
                INITIAL_CATEGORIES.forEach(cat => {
-                   const key = `offer_${cat.id.replace(/-/g, '_')}`;
-                   summaryMap[rep.svc_id].offerSpot += (rep[key] || 0);
+                   const keyOffer = `offer_${cat.id.replace(/-/g, '_')}`;
+                   const keyCapacity = `capacity_${cat.id.replace(/-/g, '_')}`;
+                   summaryMap[rep.svc_id].offerSpot += (rep[keyOffer] || 0);
+                   summaryMap[rep.svc_id].capacitySpot += (rep[keyCapacity] || 0);
                });
            }
         });
@@ -1820,6 +1825,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                        <span className="text-xs font-bold block uppercase tracking-wider mb-1">Total Ofertas (SPOT)</span>
                        <span className="text-3xl font-black">{summaryData.reduce((acc, c) => acc + c.offerSpot, 0)}</span>
                     </div>
+                    <div className="px-6 py-3 bg-fuchsia-100 text-fuchsia-800 rounded-xl border border-fuchsia-200 shadow-sm dark:border-fuchsia-800/50">
+                       <span className="text-xs font-bold block uppercase tracking-wider mb-1">Total Capacidade (SPOT)</span>
+                       <span className="text-3xl font-black">{summaryData.reduce((acc, c) => acc + c.capacitySpot, 0)}</span>
+                    </div>
                     <div className="px-6 py-3 bg-emerald-100 text-emerald-800 rounded-xl border border-emerald-200 shadow-sm dark:border-emerald-800/50">
                        <span className="text-xs font-bold block uppercase tracking-wider mb-1">Total Rodou (SPOT)</span>
                        <span className="text-3xl font-black">{summaryData.reduce((acc, c) => acc + c.ranSpot, 0)}</span>
@@ -1835,13 +1844,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                  <thead className="bg-slate-800 text-slate-100 uppercase text-xs font-bold tracking-wider">
                     <tr>
                        <th className="px-5 py-4 text-center">SVC</th>
-                       <th className="px-5 py-4 text-center border-l border-slate-700 bg-slate-700/50" colSpan={3}>Ofertas (SPOT)</th>
+                       <th className="px-5 py-4 text-center border-l border-slate-700 bg-slate-700/50" colSpan={4}>Ofertas e Capacidade (SPOT)</th>
                        <th className="px-5 py-4 text-center border-l-4 border-slate-400 bg-indigo-900/40" colSpan={4}>Frota Fixa (APP)</th>
                     </tr>
                     <tr className="bg-slate-700">
                        <th className="px-5 py-3 text-center font-medium">Nome</th>
                        
                        <th className="px-5 py-3 text-center border-l border-slate-600">Ofertados</th>
+                       <th className="px-5 py-3 text-center border-l border-slate-600 text-fuchsia-300">Capacidade</th>
                        <th className="px-5 py-3 text-center border-l border-slate-600 text-emerald-300"><span className="flex items-center justify-center gap-1.5"><span className="material-symbols-outlined text-[16px]">check_circle</span> Rodaram</span></th>
                        <th className="px-5 py-3 text-center border-l border-slate-600 text-amber-300">Aproveitamento</th>
                        
@@ -1862,6 +1872,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                           <td className="px-5 py-3.5 text-center font-bold text-slate-800 dark:text-slate-200">{row.svc}</td>
                           
                           <td className="px-5 py-3.5 text-center font-bold text-slate-600 border-l border-slate-100/50 bg-slate-50 dark:text-slate-300 dark:bg-slate-800/40">{row.offerSpot}</td>
+                          <td className="px-5 py-3.5 text-center font-bold text-fuchsia-600 border-l border-slate-100/50 bg-fuchsia-50/20 dark:text-fuchsia-400">{row.capacitySpot}</td>
                           <td className="px-5 py-3.5 text-center font-black text-emerald-600 border-l border-slate-100/50 bg-emerald-50/20 dark:text-emerald-400">
                              {row.ranSpot} 
                              {spotDiff > 0 && <span className="text-[11px] text-rose-500 font-bold ml-1.5 align-text-top">(-{spotDiff})</span>}
@@ -1879,6 +1890,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                  <tfoot className="bg-slate-800 text-white shadow-inner">
                     {(() => {
                        const totalOfferSpot = summaryData.reduce((acc, c) => acc + c.offerSpot, 0);
+                       const totalCapacitySpot = summaryData.reduce((acc, c) => acc + c.capacitySpot, 0);
                        const totalRanSpot = summaryData.reduce((acc, c) => acc + c.ranSpot, 0);
                        const totalSpotDiff = totalOfferSpot - totalRanSpot;
                        const totalSpotAprov = totalOfferSpot > 0 ? ((totalRanSpot / totalOfferSpot) * 100).toFixed(1) : '0.0';
@@ -1893,6 +1905,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                              <td className="px-5 py-4 text-center font-black uppercase tracking-wider text-slate-300">TOTAL GERAL</td>
                              
                              <td className="px-5 py-4 text-center font-black border-l border-slate-700/50 bg-slate-700/30">{totalOfferSpot}</td>
+                             <td className="px-5 py-4 text-center font-black text-fuchsia-400 border-l border-slate-700/50 bg-slate-700/30">{totalCapacitySpot}</td>
                              <td className="px-5 py-4 text-center font-black text-emerald-400 border-l border-slate-700/50 bg-slate-700/30">
                                 {totalRanSpot}
                                 {totalSpotDiff > 0 && <span className="text-[11px] text-rose-400 font-bold ml-1.5 align-text-top">(-{totalSpotDiff})</span>}
@@ -2229,9 +2242,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                    (!dirSvcFilter || d.svc === dirSvcFilter) &&
                    (!dirModalFilter || d.modal === dirModalFilter)
                 );
-                const dirTotalOffer = filteredDirData.reduce((sum, item) => sum + item.offer, 0);
-                const dirTotalUtilized = filteredDirData.reduce((sum, item) => sum + item.utilized, 0);
-                const dirTotalUtilizedRoutes = filteredDirData.reduce((sum, item) => sum + item.utilizedRoutes, 0);
+                const dirTotalOffer = filteredDirData.reduce((sum, item) => sum + (item.offer || 0), 0);
+                const dirTotalCapacity = filteredDirData.reduce((sum, item) => sum + (item.capacity || 0), 0);
+                const dirTotalUtilized = filteredDirData.reduce((sum, item) => sum + (item.utilized || 0), 0);
+                const dirTotalUtilizedRoutes = filteredDirData.reduce((sum, item) => sum + (item.utilizedRoutes || 0), 0);
                 const dirPercentage = dirTotalOffer > 0 ? ((dirTotalUtilized / dirTotalOffer) * 100).toFixed(1) : '0.0';
                 
                 const gapColor = dirTotalUtilized >= dirTotalOffer ? 'text-emerald-500' : 'text-rose-500';
@@ -2241,10 +2255,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                    const grouped: Record<string, any> = {};
                    filteredDirData.forEach(item => {
                       const key = `${item.date}|${item.svc}`;
-                      if (!grouped[key]) grouped[key] = { date: item.date, svc: item.svc, modal: 'CONSOLIDADO', offer: 0, utilized: 0, utilizedRoutes: 0 };
-                      grouped[key].offer += item.offer;
-                      grouped[key].utilized += item.utilized;
-                      grouped[key].utilizedRoutes += item.utilizedRoutes;
+                      if (!grouped[key]) grouped[key] = { date: item.date, svc: item.svc, modal: 'CONSOLIDADO', offer: 0, capacity: 0, utilized: 0, utilizedRoutes: 0 };
+                      grouped[key].offer += (item.offer || 0);
+                      grouped[key].capacity += (item.capacity || 0);
+                      grouped[key].utilized += (item.utilized || 0);
+                      grouped[key].utilizedRoutes += (item.utilizedRoutes || 0);
                    });
                    displayData = Object.values(grouped);
                 }
@@ -2333,7 +2348,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 return (
                   <div>
                     {/* KPI Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10 w-full">
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-10 w-full">
                        <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-6 group">
                           <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-500/10 rounded-full blur-xl group-hover:bg-blue-500/20 transition-all"></div>
                           <div className="flex items-center gap-4 mb-4 relative">
@@ -2343,7 +2358,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                              <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm tracking-wide">OFERTA TOTAL</h3>
                           </div>
                           <p className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white relative tracking-tight">{dirTotalOffer.toLocaleString('pt-BR')}</p>
-                          <p className="text-xs text-slate-400 mt-2 font-medium dark:text-slate-400">Capacidade Garantida (SPOT)</p>
+                          <p className="text-xs text-slate-400 mt-2 font-medium dark:text-slate-400">Oferta informada (SPOT)</p>
+                       </div>
+
+                       <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-6 group">
+                          <div className="absolute -right-6 -top-6 w-24 h-24 bg-fuchsia-500/10 rounded-full blur-xl group-hover:bg-fuchsia-500/20 transition-all"></div>
+                          <div className="flex items-center gap-4 mb-4 relative">
+                             <div className="w-10 h-10 rounded-lg bg-fuchsia-50 dark:bg-fuchsia-500/10 flex items-center justify-center">
+                               <span className="material-symbols-outlined text-fuchsia-600 dark:text-fuchsia-400">conveyor_belt</span>
+                             </div>
+                             <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm tracking-wide">CAPACIDADE TOTAL</h3>
+                          </div>
+                          <p className="text-4xl md:text-5xl font-black text-slate-800 dark:text-white relative tracking-tight">{dirTotalCapacity.toLocaleString('pt-BR')}</p>
+                          <p className="text-xs text-slate-400 mt-2 font-medium dark:text-slate-400">Capacidade Operacional (SPOT)</p>
                        </div>
                        
                        <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-6 group">
@@ -2413,6 +2440,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                <th className="px-6 py-4">Polo/SVC</th>
                                <th className="px-6 py-4">Modal</th>
                                <th className="px-6 py-4 text-center">Oferta</th>
+                               <th className="px-6 py-4 text-center">Capacidade</th>
                                <th className="px-6 py-4 text-center">Utilizado (Placas)</th>
                                <th className="px-6 py-4 text-center">Rotas Totais</th>
                                <th className="px-6 py-4 text-center">Performance/Aprov.</th>
@@ -2421,7 +2449,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                              {displayData.length === 0 ? (
                                <tr>
-                                 <td colSpan={7} className="px-6 py-8 text-center text-slate-400 font-medium dark:text-slate-400">Nenhum cruzamento encontrado para os filtros aplicados.</td>
+                                 <td colSpan={8} className="px-6 py-8 text-center text-slate-400 font-medium dark:text-slate-400">Nenhum cruzamento encontrado para os filtros aplicados.</td>
                                </tr>
                              ) : (
                                displayData.sort((a,b) => b.date.localeCompare(a.date)).map((item, idx) => {
@@ -2467,6 +2495,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                            </div>
                                         )}
                                      </td>
+                                     <td className="px-6 py-4 text-center font-bold text-fuchsia-600 dark:text-fuchsia-400 bg-fuchsia-50/30 dark:bg-fuchsia-500/5">{item.capacity}</td>
                                      <td className="px-6 py-4 text-center font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/30 dark:bg-indigo-500/5">{item.utilized}</td>
                                      <td className="px-6 py-4 text-center font-bold text-amber-600 dark:text-amber-400 bg-amber-50/30 dark:bg-amber-500/5">{item.utilizedRoutes}</td>
                                      <td className="px-6 py-4 text-center">
