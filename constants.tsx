@@ -16,7 +16,8 @@ export const JUSTIFICATION_OPTIONS = [
   'Folga',
   'Sem Driver',
   'Carro reserva',
-  'Meli não utilizou o carro'
+  'Meli não utilizou o carro',
+  'Noshow'
 ];
 
 export const SVC_OPTIONS = [
