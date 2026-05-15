@@ -98,6 +98,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [detJustificationCategoryFilter, setDetJustificationCategoryFilter] = useState('');
   const [detSortConfig, setDetSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   const [utilActiveTab, setUtilActiveTab] = useState<'overview'|'details'|'weekly'>('overview');
+  const [dirSortConfig, setDirSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
   
   // States for Weekly Vision
   const [weeklyDate, setWeeklyDate] = useState(getLocalDateString());
@@ -205,6 +206,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     } finally {
       setIsSavingOffer(false);
     }
+  };
+
+  const requestDirSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (dirSortConfig && dirSortConfig.key === key && dirSortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setDirSortConfig({ key, direction });
   };
 
   useEffect(() => {
@@ -2264,6 +2273,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                    displayData = Object.values(grouped);
                 }
 
+                // Apply Sorting
+                if (dirSortConfig) {
+                  displayData.sort((a, b) => {
+                    let aVal = a[dirSortConfig.key];
+                    let bVal = b[dirSortConfig.key];
+
+                    if (dirSortConfig.key === 'performance') {
+                      aVal = a.offer > 0 ? (a.utilized / a.offer) : 0;
+                      bVal = b.offer > 0 ? (b.utilized / b.offer) : 0;
+                    }
+
+                    if (aVal < bVal) return dirSortConfig.direction === 'asc' ? -1 : 1;
+                    if (aVal > bVal) return dirSortConfig.direction === 'asc' ? 1 : -1;
+                    return 0;
+                  });
+                } else {
+                  displayData.sort((a, b) => b.date.localeCompare(a.date));
+                }
+
                 const handleExportDashboardSpot = () => {
                    const rows = [["Data", "Polo/SVC", "Modal", "Oferta", "Utilizado (Placas)", "Rotas Totais", "Performance/Aprov."]];
                    const dataToExport = [...displayData].sort((a,b) => b.date.localeCompare(a.date));
@@ -2436,14 +2464,46 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                          <table className="w-full text-sm text-left">
                            <thead className="bg-slate-50/50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider">
                              <tr>
-                               <th className="px-6 py-4">Data</th>
-                               <th className="px-6 py-4">Polo/SVC</th>
-                               <th className="px-6 py-4">Modal</th>
-                               <th className="px-6 py-4 text-center">Oferta</th>
-                               <th className="px-6 py-4 text-center">Capacidade</th>
-                               <th className="px-6 py-4 text-center">Utilizado (Placas)</th>
-                               <th className="px-6 py-4 text-center">Rotas Totais</th>
-                               <th className="px-6 py-4 text-center">Performance/Aprov.</th>
+                               <th className="px-6 py-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group" onClick={() => requestDirSort('date')}>
+                                  <div className="flex items-center gap-1">
+                                     Data {dirSortConfig?.key === 'date' && <span className="material-symbols-outlined text-[14px]">{dirSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                  </div>
+                               </th>
+                               <th className="px-6 py-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group" onClick={() => requestDirSort('svc')}>
+                                  <div className="flex items-center gap-1">
+                                     Polo/SVC {dirSortConfig?.key === 'svc' && <span className="material-symbols-outlined text-[14px]">{dirSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                  </div>
+                               </th>
+                               <th className="px-6 py-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group" onClick={() => requestDirSort('modal')}>
+                                  <div className="flex items-center gap-1">
+                                     Modal {dirSortConfig?.key === 'modal' && <span className="material-symbols-outlined text-[14px]">{dirSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                  </div>
+                               </th>
+                               <th className="px-6 py-4 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group" onClick={() => requestDirSort('offer')}>
+                                  <div className="flex items-center justify-center gap-1">
+                                     Oferta {dirSortConfig?.key === 'offer' && <span className="material-symbols-outlined text-[14px]">{dirSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                  </div>
+                               </th>
+                               <th className="px-6 py-4 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group" onClick={() => requestDirSort('capacity')}>
+                                  <div className="flex items-center justify-center gap-1">
+                                     Capacidade {dirSortConfig?.key === 'capacity' && <span className="material-symbols-outlined text-[14px]">{dirSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                  </div>
+                               </th>
+                               <th className="px-6 py-4 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group" onClick={() => requestDirSort('utilized')}>
+                                  <div className="flex items-center justify-center gap-1">
+                                     Utilizado {dirSortConfig?.key === 'utilized' && <span className="material-symbols-outlined text-[14px]">{dirSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                  </div>
+                               </th>
+                               <th className="px-6 py-4 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group" onClick={() => requestDirSort('utilizedRoutes')}>
+                                  <div className="flex items-center justify-center gap-1">
+                                     Rotas {dirSortConfig?.key === 'utilizedRoutes' && <span className="material-symbols-outlined text-[14px]">{dirSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                  </div>
+                               </th>
+                               <th className="px-6 py-4 text-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group" onClick={() => requestDirSort('performance')}>
+                                  <div className="flex items-center justify-center gap-1">
+                                     Perf. {dirSortConfig?.key === 'performance' && <span className="material-symbols-outlined text-[14px]">{dirSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                  </div>
+                               </th>
                              </tr>
                            </thead>
                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
@@ -2452,7 +2512,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                  <td colSpan={8} className="px-6 py-8 text-center text-slate-400 font-medium dark:text-slate-400">Nenhum cruzamento encontrado para os filtros aplicados.</td>
                                </tr>
                              ) : (
-                               displayData.sort((a,b) => b.date.localeCompare(a.date)).map((item, idx) => {
+                               displayData.map((item, idx) => {
                                  const itemPerc = item.offer > 0 ? ((item.utilized / item.offer) * 100).toFixed(0) : 0;
                                  return (
                                    <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors">
