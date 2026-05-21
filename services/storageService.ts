@@ -220,6 +220,45 @@ export const updateReportOffer = async (date: string, svc_id: string, modalKey: 
   }
 };
 
+export const updateReportCapacity = async (date: string, svc_id: string, modalKey: string, newCapacity: number) => {
+  const { data: existing, error: fetchError } = await supabase
+    .from('daily_reports')
+    .select('id')
+    .match({ date, svc_id })
+    .maybeSingle();
+
+  if (fetchError) {
+    console.error('Error fetching existing report:', fetchError);
+    throw fetchError;
+  }
+
+  if (existing) {
+    const { error } = await supabase
+      .from('daily_reports')
+      .update({ [modalKey]: newCapacity })
+      .match({ date, svc_id });
+
+    if (error) {
+      console.error('Error updating report capacity:', error);
+      throw error;
+    }
+  } else {
+    const { error } = await supabase
+      .from('daily_reports')
+      .insert([{ 
+        date, 
+        svc_id, 
+        [modalKey]: newCapacity,
+        acceptance_type: 'Correção de Anomalia'
+      }]);
+
+    if (error) {
+      console.error('Error inserting new report for capacity:', error);
+      throw error;
+    }
+  }
+};
+
 
 export const saveDailyRoutes = async (payload: any[]) => {
   // Upsert com update: Atualiza a linha se route_id já existir

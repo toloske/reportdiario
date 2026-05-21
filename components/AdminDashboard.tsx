@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import html2canvas from 'html2canvas';
 import { supabase } from '../services/supabaseClient';
-import { getReportsByDate, getReportsByDateRange, saveDailyRoutes, getDailyRoutesByDate, getDailyRoutesByDateRange, updateReportJustifications, updateReportOffer } from '../services/storageService';
+import { getReportsByDate, getReportsByDateRange, saveDailyRoutes, getDailyRoutesByDate, getDailyRoutesByDateRange, updateReportJustifications, updateReportOffer, updateReportCapacity } from '../services/storageService';
 import { dataService, SVC, Vehicle } from '../services/dataService';
 import { INITIAL_CATEGORIES, JUSTIFICATION_OPTIONS } from '../constants';
 import Papa from 'papaparse';
@@ -117,6 +117,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [editingOfferValue, setEditingOfferValue] = useState<number | ''>('');
   const [isSavingOffer, setIsSavingOffer] = useState(false);
 
+  const [editingCapacityKey, setEditingCapacityKey] = useState<string | null>(null);
+  const [editingCapacityValue, setEditingCapacityValue] = useState<number | ''>('');
+  const [isSavingCapacity, setIsSavingCapacity] = useState(false);
+
+  const [dirWarningFilter, setDirWarningFilter] = useState(false);
+
   const [summaryData, setSummaryData] = useState<any[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(false);
 
@@ -205,6 +211,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       alert("Erro ao salvar a oferta.");
     } finally {
       setIsSavingOffer(false);
+    }
+  };
+
+  const handleSaveCapacity = async (date: string, svc: string, modal: string) => {
+    if (editingCapacityValue === '' || typeof editingCapacityValue !== 'number') return;
+    setIsSavingCapacity(true);
+    try {
+      const cat = INITIAL_CATEGORIES.find(c => c.name.toUpperCase() === modal);
+      if (!cat) throw new Error("Categoria não encontrada.");
+      const columnKey = `capacity_${cat.id.replace(/-/g, '_')}`;
+
+      await updateReportCapacity(date, svc, columnKey, editingCapacityValue);
+      setEditingCapacityKey(null);
+
+      setDirData(prev => prev.map(d => {
+         if (d.date === date && d.svc === svc && d.modal === modal) {
+            return { ...d, capacity: editingCapacityValue };
+         }
+         return d;
+      }));
+    } catch (e) {
+      alert("Erro ao salvar a capacidade.");
+    } finally {
+      setIsSavingCapacity(false);
     }
   };
 
@@ -2229,7 +2259,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                   </div>
                 </div>
                 
-                <div className="md:col-span-5 mt-2 flex items-center justify-end">
+                <div className="md:col-span-5 mt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer bg-rose-50 dark:bg-rose-900/10 border border-rose-200 dark:border-rose-800/30 px-4 py-2 rounded-xl transition-all hover:bg-rose-100 dark:hover:bg-rose-900/20">
+                    <input type="checkbox" checked={dirWarningFilter} onChange={e => setDirWarningFilter(e.target.checked)} className="rounded text-rose-500 focus:ring-rose-500 w-4 h-4" />
+                    <span className="text-sm font-bold text-rose-700 dark:text-rose-400">Filtrar apenas alertas (Excesso / Sem Oferta)</span>
+                  </label>
                   <label className="flex items-center gap-2 cursor-pointer bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 px-4 py-2 rounded-xl transition-all hover:bg-amber-100 dark:hover:bg-amber-900/20">
                     <input type="checkbox" checked={dirConsolidateModals} onChange={e => setDirConsolidateModals(e.target.checked)} className="rounded text-amber-500 focus:ring-amber-500 w-4 h-4" />
                     <span className="text-sm font-bold text-amber-700 dark:text-amber-400">Consolidar tabela somando todos os Modais por Polo/SVC</span>
@@ -2249,7 +2283,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 const filteredDirData = dirData.filter(d => 
                    (!dirRegionalFilter || MAPEAMENTO_REGIONAIS[dirRegionalFilter]?.includes(d.svc)) &&
                    (!dirSvcFilter || d.svc === dirSvcFilter) &&
-                   (!dirModalFilter || d.modal === dirModalFilter)
+                   (!dirModalFilter || d.modal === dirModalFilter) &&
+                   (!dirWarningFilter || (d.utilized > d.offer))
                 );
                 const dirTotalOffer = filteredDirData.reduce((sum, item) => sum + (item.offer || 0), 0);
                 const dirTotalCapacity = filteredDirData.reduce((sum, item) => sum + (item.capacity || 0), 0);
@@ -2555,7 +2590,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                            </div>
                                         )}
                                      </td>
-                                     <td className="px-6 py-4 text-center font-bold text-fuchsia-600 dark:text-fuchsia-400 bg-fuchsia-50/30 dark:bg-fuchsia-500/5">{item.capacity}</td>
+                                     <td className="px-6 py-4 text-center bg-fuchsia-50/30 dark:bg-fuchsia-500/5">
+                                        {editingCapacityKey === `${item.date}|${item.svc}|${item.modal}` ? (
+                                           <div className="flex items-center justify-center gap-1">
+                                             <input 
+                                               type="number" 
+                                               min="0"
+                                               value={editingCapacityValue}
+                                               onChange={(e) => setEditingCapacityValue(e.target.value === '' ? '' : Number(e.target.value))}
+                                               className="w-16 rounded border border-fuchsia-300 dark:border-fuchsia-600 bg-white dark:bg-slate-800 text-xs p-1 text-center font-bold focus:ring-2 focus:ring-fuchsia-500"
+                                               autoFocus
+                                               disabled={isSavingCapacity}
+                                               onKeyDown={(e) => {
+                                                  if(e.key === 'Enter') handleSaveCapacity(item.date, item.svc, item.modal);
+                                                  if(e.key === 'Escape') setEditingCapacityKey(null);
+                                               }}
+                                             />
+                                             <button disabled={isSavingCapacity} onClick={() => handleSaveCapacity(item.date, item.svc, item.modal)} className="text-emerald-500 hover:text-emerald-600 disabled:opacity-50 flex items-center justify-center p-1"><span className="material-symbols-outlined text-[16px]">check</span></button>
+                                             <button disabled={isSavingCapacity} onClick={() => setEditingCapacityKey(null)} className="text-slate-400 hover:text-slate-600 disabled:opacity-50 flex items-center justify-center p-1 dark:text-slate-400"><span className="material-symbols-outlined text-[16px]">close</span></button>
+                                           </div>
+                                        ) : (
+                                           <div className="flex items-center justify-center gap-2 group cursor-pointer" onClick={() => { if(!dirConsolidateModals) { setEditingCapacityKey(`${item.date}|${item.svc}|${item.modal}`); setEditingCapacityValue(item.capacity); } }} title={dirConsolidateModals ? "Desative a consolidação para editar" : "Clique para editar"}>
+                                              <span className="font-bold text-fuchsia-600 dark:text-fuchsia-400">{item.capacity}</span>
+                                              {!dirConsolidateModals && <span className="material-symbols-outlined text-[12px] text-fuchsia-300 dark:text-fuchsia-600 opacity-0 group-hover:opacity-100 transition-opacity">edit</span>}
+                                           </div>
+                                        )}
+                                     </td>
                                      <td className="px-6 py-4 text-center font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/30 dark:bg-indigo-500/5">{item.utilized}</td>
                                      <td className="px-6 py-4 text-center font-bold text-amber-600 dark:text-amber-400 bg-amber-50/30 dark:bg-amber-500/5">{item.utilizedRoutes}</td>
                                      <td className="px-6 py-4 text-center">
