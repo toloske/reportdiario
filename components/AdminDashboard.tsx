@@ -86,6 +86,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [dirRegionalFilter, setDirRegionalFilter] = useState('');
   const [dirModalFilter, setDirModalFilter] = useState('');
   const [dirConsolidateModals, setDirConsolidateModals] = useState(true);
+  const [dirConsolidateDates, setDirConsolidateDates] = useState(false);
   const [dirData, setDirData] = useState<any[]>([]);
   const [dirLoading, setDirLoading] = useState(false);
   const [detailedUtilizationData, setDetailedUtilizationData] = useState<any[]>([]);
@@ -2259,14 +2260,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                   </div>
                 </div>
                 
-                <div className="md:col-span-5 mt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="md:col-span-5 mt-2 flex flex-col sm:flex-row items-start sm:items-center justify-start gap-3 flex-wrap">
                   <label className="flex items-center gap-2 cursor-pointer bg-rose-50 dark:bg-rose-900/10 border border-rose-200 dark:border-rose-800/30 px-4 py-2 rounded-xl transition-all hover:bg-rose-100 dark:hover:bg-rose-900/20">
                     <input type="checkbox" checked={dirWarningFilter} onChange={e => setDirWarningFilter(e.target.checked)} className="rounded text-rose-500 focus:ring-rose-500 w-4 h-4" />
-                    <span className="text-sm font-bold text-rose-700 dark:text-rose-400">Filtrar apenas alertas (Excesso / Sem Oferta)</span>
+                    <span className="text-sm font-bold text-rose-700 dark:text-rose-400">Apenas Alertas</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 px-4 py-2 rounded-xl transition-all hover:bg-amber-100 dark:hover:bg-amber-900/20">
                     <input type="checkbox" checked={dirConsolidateModals} onChange={e => setDirConsolidateModals(e.target.checked)} className="rounded text-amber-500 focus:ring-amber-500 w-4 h-4" />
-                    <span className="text-sm font-bold text-amber-700 dark:text-amber-400">Consolidar tabela somando todos os Modais por Polo/SVC</span>
+                    <span className="text-sm font-bold text-amber-700 dark:text-amber-400">Consolidar Modais</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-800/30 px-4 py-2 rounded-xl transition-all hover:bg-indigo-100 dark:hover:bg-indigo-900/20">
+                    <input type="checkbox" checked={dirConsolidateDates} onChange={e => setDirConsolidateDates(e.target.checked)} className="rounded text-indigo-500 focus:ring-indigo-500 w-4 h-4" />
+                    <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">Consolidar Datas</span>
                   </label>
                 </div>
              </div>
@@ -2295,11 +2300,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 const gapColor = dirTotalUtilized >= dirTotalOffer ? 'text-emerald-500' : 'text-rose-500';
 
                 let displayData = filteredDirData;
-                if (dirConsolidateModals) {
+                if (dirConsolidateModals || dirConsolidateDates) {
                    const grouped: Record<string, any> = {};
                    filteredDirData.forEach(item => {
-                      const key = `${item.date}|${item.svc}`;
-                      if (!grouped[key]) grouped[key] = { date: item.date, svc: item.svc, modal: 'CONSOLIDADO', offer: 0, capacity: 0, utilized: 0, utilizedRoutes: 0 };
+                      const d = dirConsolidateDates ? 'PERÍODO CONSOLIDADO' : item.date;
+                      const m = dirConsolidateModals ? 'CONSOLIDADO' : item.modal;
+                      const key = `${d}|${item.svc}|${m}`;
+                      if (!grouped[key]) grouped[key] = { date: d, svc: item.svc, modal: m, offer: 0, capacity: 0, utilized: 0, utilizedRoutes: 0 };
                       grouped[key].offer += (item.offer || 0);
                       grouped[key].capacity += (item.capacity || 0);
                       grouped[key].utilized += (item.utilized || 0);
@@ -2551,7 +2558,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                  const itemPerc = item.offer > 0 ? ((item.utilized / item.offer) * 100).toFixed(0) : 0;
                                  return (
                                    <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors">
-                                     <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-600 dark:text-slate-300 text-xs">{item.date.split('-').reverse().join('/')}</td>
+                                     <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-600 dark:text-slate-300 text-xs">{item.date.includes('-') ? item.date.split('-').reverse().join('/') : item.date}</td>
                                      <td className="px-6 py-4 whitespace-nowrap font-bold text-slate-800 dark:text-slate-200">
                                        <div className="flex items-center gap-2">
                                           {item.svc}
@@ -2584,9 +2591,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                              <button disabled={isSavingOffer} onClick={() => setEditingOfferKey(null)} className="text-slate-400 hover:text-slate-600 disabled:opacity-50 flex items-center justify-center p-1 dark:text-slate-400"><span className="material-symbols-outlined text-[16px]">close</span></button>
                                            </div>
                                         ) : (
-                                           <div className="flex items-center justify-center gap-2 group cursor-pointer" onClick={() => { if(!dirConsolidateModals) { setEditingOfferKey(`${item.date}|${item.svc}|${item.modal}`); setEditingOfferValue(item.offer); } }} title={dirConsolidateModals ? "Desative a consolidação para editar" : "Clique para editar"}>
+                                           <div className="flex items-center justify-center gap-2 group cursor-pointer" onClick={() => { if(!dirConsolidateModals && !dirConsolidateDates) { setEditingOfferKey(`${item.date}|${item.svc}|${item.modal}`); setEditingOfferValue(item.offer); } }} title={(dirConsolidateModals || dirConsolidateDates) ? "Desative a consolidação para editar" : "Clique para editar"}>
                                               <span className="font-bold text-blue-600 dark:text-blue-400">{item.offer}</span>
-                                              {!dirConsolidateModals && <span className="material-symbols-outlined text-[12px] text-blue-300 dark:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">edit</span>}
+                                              {!(dirConsolidateModals || dirConsolidateDates) && <span className="material-symbols-outlined text-[12px] text-blue-300 dark:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">edit</span>}
                                            </div>
                                         )}
                                      </td>
@@ -2610,9 +2617,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                              <button disabled={isSavingCapacity} onClick={() => setEditingCapacityKey(null)} className="text-slate-400 hover:text-slate-600 disabled:opacity-50 flex items-center justify-center p-1 dark:text-slate-400"><span className="material-symbols-outlined text-[16px]">close</span></button>
                                            </div>
                                         ) : (
-                                           <div className="flex items-center justify-center gap-2 group cursor-pointer" onClick={() => { if(!dirConsolidateModals) { setEditingCapacityKey(`${item.date}|${item.svc}|${item.modal}`); setEditingCapacityValue(item.capacity); } }} title={dirConsolidateModals ? "Desative a consolidação para editar" : "Clique para editar"}>
+                                           <div className="flex items-center justify-center gap-2 group cursor-pointer" onClick={() => { if(!dirConsolidateModals && !dirConsolidateDates) { setEditingCapacityKey(`${item.date}|${item.svc}|${item.modal}`); setEditingCapacityValue(item.capacity); } }} title={(dirConsolidateModals || dirConsolidateDates) ? "Desative a consolidação para editar" : "Clique para editar"}>
                                               <span className="font-bold text-fuchsia-600 dark:text-fuchsia-400">{item.capacity}</span>
-                                              {!dirConsolidateModals && <span className="material-symbols-outlined text-[12px] text-fuchsia-300 dark:text-fuchsia-600 opacity-0 group-hover:opacity-100 transition-opacity">edit</span>}
+                                              {!(dirConsolidateModals || dirConsolidateDates) && <span className="material-symbols-outlined text-[12px] text-fuchsia-300 dark:text-fuchsia-600 opacity-0 group-hover:opacity-100 transition-opacity">edit</span>}
                                            </div>
                                         )}
                                      </td>
