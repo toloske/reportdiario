@@ -31,7 +31,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [fixedVehicles, setFixedVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'|'export'|'director'|'summary'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'|'export'|'director'|'summary'|'efficiency'>('daily');
   const [startDate, setStartDate] = useState<string>(
     getLocalDateString(new Date(new Date().setDate(new Date().getDate() - 7)))
   );
@@ -123,6 +123,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [isSavingCapacity, setIsSavingCapacity] = useState(false);
 
   const [dirWarningFilter, setDirWarningFilter] = useState(false);
+
+  // States for Efficiency Tab
+  const [effStartDate, setEffStartDate] = useState<string>(
+    getLocalDateString(new Date(new Date().setDate(new Date().getDate() - 7)))
+  );
+  const [effEndDate, setEffEndDate] = useState<string>(getLocalDateString());
+  const [effRegionalFilter, setEffRegionalFilter] = useState<string>('');
+  const [effSvcFilter, setEffSvcFilter] = useState<string>('');
+  const [effModalFilter, setEffModalFilter] = useState<string>('');
+  const [effFleetTypeFilter, setEffFleetTypeFilter] = useState<'all'|'fixed'|'spot'>('all');
+  const [effConsolidateModals, setEffConsolidateModals] = useState<boolean>(false);
+  const [effConsolidateDates, setEffConsolidateDates] = useState<boolean>(false);
+  const [effData, setEffData] = useState<any[]>([]);
+  const [effLoading, setEffLoading] = useState<boolean>(false);
+  const [effSortConfig, setEffSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
 
   const [summaryData, setSummaryData] = useState<any[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -742,6 +757,174 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     };
     fetchDirData();
   }, [dirStartDate, dirEndDate, activeTab]);
+
+  useEffect(() => {
+    const fetchEfficiencyData = async () => {
+      if (activeTab === 'efficiency') {
+        setEffLoading(true);
+        try {
+          const [fetchedReports, fetchedRoutes] = await Promise.all([
+            getReportsByDateRange(effStartDate, effEndDate),
+            getDailyRoutesByDateRange(effStartDate, effEndDate)
+          ]);
+
+          const normalizarModal = (modalRaw: string): string => {
+            if (!modalRaw) return '';
+            const m = modalRaw.toUpperCase().trim();
+            if (['BULK - VUC EQUIPE ÚNICA POOL', 'UTILITÁRIOS', 'BULK - VAN EQUIPE ÚNICA POOL', 'VAN', 'VEÍCULO DE PASSEIO', 'VUC'].includes(m)) {
+              return m;
+            }
+            if (m.includes('BULK - VUC') || m.includes('BULK VUC')) return 'BULK - VUC EQUIPE ÚNICA POOL';
+            if (m.includes('BULK - VAN') || m.includes('BULK VAN')) return 'BULK - VAN EQUIPE ÚNICA POOL';
+            if (m.includes('VUC')) return 'VUC';
+            if (m.includes('VAN')) return 'VAN';
+            if (m.includes('UTILITÁRIO') || m.includes('UTILITARIOS') || m.includes('UTI')) return 'UTILITÁRIOS';
+            if (m.includes('PASSEIO') || m.includes('VEICULO DE PASSEIO')) return 'VEÍCULO DE PASSEIO';
+            return '';
+          };
+
+          const fixedPlatesSet = new Set(fixedVehicles.map(v => v.plate));
+          const fixedVehicleInfo: Record<string, { svc: string, modal: string }> = {};
+          fixedVehicles.forEach(v => {
+            fixedVehicleInfo[v.plate] = {
+              svc: v.svc_id,
+              modal: normalizarModal(v.modal || '')
+            };
+          });
+
+          const dailyAgg: Record<string, {
+            date: string,
+            svc: string,
+            modal: string,
+            fixedTotal: number,
+            fixedRan: number,
+            offerSpotRegistered: number,
+            spotRan: number
+          }> = {};
+
+          const getAggEntry = (date: string, svc: string, modal: string) => {
+            const key = `${date}|${svc}|${modal}`;
+            if (!dailyAgg[key]) {
+              dailyAgg[key] = {
+                date,
+                svc,
+                modal,
+                fixedTotal: 0,
+                fixedRan: 0,
+                offerSpotRegistered: 0,
+                spotRan: 0
+              };
+            }
+            return dailyAgg[key];
+          };
+
+          const uniqueDates = Array.from(new Set([
+            ...fetchedReports.map(r => r.date),
+            ...fetchedRoutes.map(r => r.date)
+          ])).sort();
+
+          uniqueDates.forEach(date => {
+            if (date >= effStartDate && date <= effEndDate) {
+              fixedVehicles.forEach(v => {
+                const normM = normalizarModal(v.modal || '');
+                if (normM && v.svc_id) {
+                  const entry = getAggEntry(date, v.svc_id, normM);
+                  entry.fixedTotal += 1;
+                }
+              });
+            }
+          });
+
+          const platesProcessedOnDate = new Set<string>();
+
+          fetchedRoutes.forEach(route => {
+            const date = route.date;
+            if (date < effStartDate || date > effEndDate) return;
+
+            const routeXpt = (route.xpt || '').trim().toUpperCase();
+            const svc = routeXpt === 'ESP8' ? 'XPT' : (route.svc_id || '').trim();
+            const modal = normalizarModal(route.vehicle_type || '');
+            const plate = (route.plate || '').toUpperCase().trim();
+
+            if (!svc || !modal || !plate) return;
+
+            const uniquePlateKey = `${date}|${svc}|${modal}|${plate}`;
+            if (platesProcessedOnDate.has(uniquePlateKey)) return;
+            platesProcessedOnDate.add(uniquePlateKey);
+
+            const isFixed = fixedPlatesSet.has(plate) && fixedVehicleInfo[plate]?.svc === svc;
+
+            const entry = getAggEntry(date, svc, modal);
+            if (isFixed) {
+              entry.fixedRan += 1;
+            } else {
+              entry.spotRan += 1;
+            }
+          });
+
+          fetchedReports.forEach(report => {
+            const date = report.date;
+            if (date < effStartDate || date > effEndDate) return;
+            const svc = report.svc_id;
+            if (!svc) return;
+
+            INITIAL_CATEGORIES.forEach(cat => {
+              const modalName = cat.name.toUpperCase();
+              const keyOffer = `offer_${cat.id.replace(/-/g, '_')}`;
+              const offerVal = report[keyOffer] || 0;
+
+              if (offerVal > 0) {
+                const entry = getAggEntry(date, svc, modalName);
+                entry.offerSpotRegistered += offerVal;
+              }
+            });
+          });
+
+          const compiled: any[] = [];
+          Object.values(dailyAgg).forEach(entry => {
+            if (
+              entry.fixedTotal === 0 &&
+              entry.fixedRan === 0 &&
+              entry.offerSpotRegistered === 0 &&
+              entry.spotRan === 0
+            ) {
+              return;
+            }
+
+            const offerSpotTotal = Math.max(entry.offerSpotRegistered, entry.spotRan);
+
+            let regional = 'N/A';
+            for (const reg of Object.keys(MAPEAMENTO_REGIONAIS)) {
+              if (MAPEAMENTO_REGIONAIS[reg].includes(entry.svc)) {
+                regional = reg;
+                break;
+              }
+            }
+
+            compiled.push({
+              date: entry.date,
+              svc: entry.svc,
+              regional,
+              modal: entry.modal,
+              fixedTotal: entry.fixedTotal,
+              fixedRan: entry.fixedRan,
+              offerSpotRegistered: entry.offerSpotRegistered,
+              offerSpotTotal: offerSpotTotal,
+              spotRan: entry.spotRan
+            });
+          });
+
+          setEffData(compiled);
+        } catch (error) {
+          console.error("Erro ao processar dados de eficiencia:", error);
+        } finally {
+          setEffLoading(false);
+        }
+      }
+    };
+
+    fetchEfficiencyData();
+  }, [effStartDate, effEndDate, activeTab, svcs, fixedVehicles]);
 
   useEffect(() => {
     const loadSummary = async () => {
@@ -1754,7 +1937,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
            { id: 'daily', label: 'Diário' },
            { id: 'utilization', label: 'Utilização' },
            { id: 'director', label: 'Ofertas SPOT' },
-           { id: 'summary', label: 'Resumo Diário' }
+           { id: 'summary', label: 'Resumo Diário' },
+           { id: 'efficiency', label: 'Eficiência de Frota' }
         ].map((tab) => (
           <button 
             key={tab.id}
@@ -1766,6 +1950,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             {tab.id === 'utilization' && <span className="material-symbols-outlined text-[18px]">pie_chart</span>}
             {tab.id === 'director' && <span className="material-symbols-outlined text-[18px]">dashboard</span>}
             {tab.id === 'summary' && <span className="material-symbols-outlined text-[18px]">analytics</span>}
+            {tab.id === 'efficiency' && <span className="material-symbols-outlined text-[18px]">speed</span>}
             {tab.label.toUpperCase()}
           </button>
         ))}
@@ -2238,8 +2423,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                   <div className="relative">
                     <select value={dirSvcFilter} onChange={e => setDirSvcFilter(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-amber-500/20 focus:border-amber-500 font-medium text-slate-700 dark:text-slate-200 appearance-none shadow-sm transition-all">
                       <option value="">Todos os SVCs</option>
-                      {Array.from(new Set(dirData.map(d => d.svc)))
-                        .filter(s => !dirRegionalFilter || MAPEAMENTO_REGIONAIS[dirRegionalFilter]?.includes(s))
+                      {Array.from(new Set(dirData.map(d => d.svc as string)))
+                        .filter((s: any) => !dirRegionalFilter || MAPEAMENTO_REGIONAIS[dirRegionalFilter]?.includes(s))
                         .sort().map(s => (
                         <option key={s} value={s}>{s}</option>
                       ))}
@@ -2637,6 +2822,597 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                            </tbody>
                          </table>
                        </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'efficiency' && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl p-6 md:p-10 animate-fade-in w-full overflow-hidden">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+              <span className="material-symbols-outlined text-white">speed</span>
+            </div>
+            <div>
+              <h2 className="text-xl md:text-2xl font-bold text-slate-800 dark:text-white">Eficiência de Frota</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Análise de eficiência de Frota Fixa e utilização de veículos Spot/Extras</p>
+            </div>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 dark:bg-slate-800/40 dark:border-slate-700/50 rounded-2xl p-6 mb-8 w-full sticky top-0 z-10 shadow-sm backdrop-blur-md">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Data Inicial</label>
+                <input 
+                  type="date" 
+                  value={effStartDate} 
+                  max={effEndDate} 
+                  onChange={e => setEffStartDate(e.target.value)} 
+                  className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-all" 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Data Final</label>
+                <input 
+                  type="date" 
+                  value={effEndDate} 
+                  min={effStartDate} 
+                  max={getLocalDateString()} 
+                  onChange={e => setEffEndDate(e.target.value)} 
+                  className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-all" 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Regional</label>
+                <div className="relative">
+                  <select 
+                    value={effRegionalFilter} 
+                    onChange={e => {setEffRegionalFilter(e.target.value); setEffSvcFilter('');}} 
+                    className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none shadow-sm transition-all"
+                  >
+                    <option value="">Todas</option>
+                    {Object.keys(MAPEAMENTO_REGIONAIS).map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                  <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none dark:text-slate-400">public</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Filtro SVC</label>
+                <div className="relative">
+                  <select 
+                    value={effSvcFilter} 
+                    onChange={e => setEffSvcFilter(e.target.value)} 
+                    className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none shadow-sm transition-all"
+                  >
+                    <option value="">Todos os SVCs</option>
+                    {Array.from(new Set(effData.map(d => d.svc as string)))
+                      .filter((s: any) => !effRegionalFilter || MAPEAMENTO_REGIONAIS[effRegionalFilter]?.includes(s))
+                      .sort().map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                  </select>
+                  <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none dark:text-slate-400">expand_content</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Filtro Modal</label>
+                <div className="relative">
+                  <select 
+                    value={effModalFilter} 
+                    onChange={e => setEffModalFilter(e.target.value)} 
+                    className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 appearance-none shadow-sm transition-all"
+                  >
+                    <option value="">Todos os Modais</option>
+                    {Array.from(new Set(effData.map(d => d.modal))).filter(Boolean).sort().map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none dark:text-slate-400">minor_crash</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-t border-slate-200/50 dark:border-slate-700/50 pt-5 mt-5">
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-2 cursor-pointer bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 px-4 py-2 rounded-xl transition-all hover:bg-amber-100 dark:hover:bg-amber-900/20">
+                  <input 
+                    type="checkbox" 
+                    checked={effConsolidateModals} 
+                    onChange={e => setEffConsolidateModals(e.target.checked)} 
+                    className="rounded text-amber-500 focus:ring-amber-500 w-4 h-4" 
+                  />
+                  <span className="text-sm font-bold text-amber-700 dark:text-amber-400">Consolidar Modais</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-800/30 px-4 py-2 rounded-xl transition-all hover:bg-indigo-100 dark:hover:bg-indigo-900/20">
+                  <input 
+                    type="checkbox" 
+                    checked={effConsolidateDates} 
+                    onChange={e => setEffConsolidateDates(e.target.checked)} 
+                    className="rounded text-indigo-500 focus:ring-indigo-500 w-4 h-4" 
+                  />
+                  <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">Consolidar Datas</span>
+                </label>
+              </div>
+
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Foco de Frota:</span>
+                <select 
+                  value={effFleetTypeFilter} 
+                  onChange={e => setEffFleetTypeFilter(e.target.value as any)} 
+                  className="rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 px-4 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm"
+                >
+                  <option value="all">Todas as Frotas</option>
+                  <option value="fixed">Frota Fixa (FF)</option>
+                  <option value="spot">Spot / Extras</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {effLoading ? (
+            <div className="flex flex-col items-center justify-center p-16 w-full">
+              <div className="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-600 rounded-full animate-spin"></div>
+              <p className="mt-4 text-slate-500 dark:text-slate-400 font-medium animate-pulse">Compilando dados de eficiência...</p>
+            </div>
+          ) : (
+            <>
+              {(() => {
+                const filteredData = effData.filter(d => {
+                  if (effRegionalFilter && d.regional !== effRegionalFilter) return false;
+                  if (effSvcFilter && d.svc !== effSvcFilter) return false;
+                  if (effModalFilter && d.modal !== effModalFilter) return false;
+                  return true;
+                });
+
+                const uniqueDates = Array.from(new Set(filteredData.map(d => d.date)));
+                const numDays = uniqueDates.length || 1;
+
+                const globalFixedTotal = filteredData.reduce((acc, c) => acc + c.fixedTotal, 0);
+                const globalFixedRan = filteredData.reduce((acc, c) => acc + c.fixedRan, 0);
+                const globalOfferSpotTotal = filteredData.reduce((acc, c) => acc + c.offerSpotTotal, 0);
+                const globalSpotRan = filteredData.reduce((acc, c) => acc + c.spotRan, 0);
+
+                const avgFixedTotal = globalFixedTotal / numDays;
+                const avgFixedRan = globalFixedRan / numDays;
+                const avgOfferSpot = globalOfferSpotTotal / numDays;
+                const avgSpotRan = globalSpotRan / numDays;
+
+                const efficiencyFF = globalFixedTotal > 0 ? (globalFixedRan / globalFixedTotal) * 100 : 0;
+                const efficiencySpot = globalOfferSpotTotal > 0 ? (globalSpotRan / globalOfferSpotTotal) * 100 : 0;
+                const efficiencyGeral = (globalFixedTotal + globalOfferSpotTotal) > 0 
+                  ? ((globalFixedRan + globalSpotRan) / (globalFixedTotal + globalOfferSpotTotal)) * 100 
+                  : 0;
+
+                let displayData = filteredData;
+                if (effConsolidateModals || effConsolidateDates) {
+                  const grouped: Record<string, any> = {};
+                  filteredData.forEach(item => {
+                    const d = effConsolidateDates ? 'PERÍODO CONSOLIDADO' : item.date;
+                    const m = effConsolidateModals ? 'CONSOLIDADO' : item.modal;
+                    const key = `${d}|${item.svc}|${m}`;
+
+                    if (!grouped[key]) {
+                      grouped[key] = {
+                        date: d,
+                        svc: item.svc,
+                        regional: item.regional,
+                        modal: m,
+                        fixedTotal: 0,
+                        fixedRan: 0,
+                        offerSpotRegistered: 0,
+                        offerSpotTotal: 0,
+                        spotRan: 0,
+                        datesSet: new Set<string>()
+                      };
+                    }
+                    grouped[key].fixedTotal += item.fixedTotal;
+                    grouped[key].fixedRan += item.fixedRan;
+                    grouped[key].offerSpotRegistered += item.offerSpotRegistered;
+                    grouped[key].offerSpotTotal += item.offerSpotTotal;
+                    grouped[key].spotRan += item.spotRan;
+                    grouped[key].datesSet.add(item.date);
+                  });
+
+                  displayData = Object.values(grouped).map((g: any) => {
+                    const daysInGroup = g.datesSet.size || 1;
+                    return {
+                      ...g,
+                      fixedTotalAvg: g.fixedTotal / daysInGroup,
+                      fixedRanAvg: g.fixedRan / daysInGroup,
+                      offerSpotTotalAvg: g.offerSpotTotal / daysInGroup,
+                      spotRanAvg: g.spotRan / daysInGroup
+                    };
+                  });
+                } else {
+                  displayData = filteredData.map(item => ({
+                    ...item,
+                    fixedTotalAvg: item.fixedTotal,
+                    fixedRanAvg: item.fixedRan,
+                    offerSpotTotalAvg: item.offerSpotTotal,
+                    spotRanAvg: item.spotRan
+                  }));
+                }
+
+                const requestEffSort = (key: string) => {
+                  let direction: 'asc' | 'desc' = 'asc';
+                  if (effSortConfig && effSortConfig.key === key && effSortConfig.direction === 'asc') {
+                    direction = 'desc';
+                  }
+                  setEffSortConfig({ key, direction });
+                };
+
+                if (effSortConfig) {
+                  displayData.sort((a, b) => {
+                    let aVal = a[effSortConfig.key];
+                    let bVal = b[effSortConfig.key];
+
+                    if (effSortConfig.key === 'effFF') {
+                      aVal = a.fixedTotal > 0 ? (a.fixedRan / a.fixedTotal) : 0;
+                      bVal = b.fixedTotal > 0 ? (b.fixedRan / b.fixedTotal) : 0;
+                    } else if (effSortConfig.key === 'effSpot') {
+                      aVal = a.offerSpotTotal > 0 ? (a.spotRan / a.offerSpotTotal) : 0;
+                      bVal = b.offerSpotTotal > 0 ? (b.spotRan / b.offerSpotTotal) : 0;
+                    } else if (effSortConfig.key === 'effGeral') {
+                      const aTotal = a.fixedTotal + a.offerSpotTotal;
+                      const bTotal = b.fixedTotal + b.offerSpotTotal;
+                      aVal = aTotal > 0 ? ((a.fixedRan + a.spotRan) / aTotal) : 0;
+                      bVal = bTotal > 0 ? ((b.fixedRan + b.spotRan) / bTotal) : 0;
+                    }
+
+                    if (aVal < bVal) return effSortConfig.direction === 'asc' ? -1 : 1;
+                    if (aVal > bVal) return effSortConfig.direction === 'asc' ? 1 : -1;
+                    return 0;
+                  });
+                } else {
+                  displayData.sort((a, b) => b.date.localeCompare(a.date));
+                }
+
+                const handleExportEfficiencyCSV = () => {
+                  if (displayData.length === 0) return;
+                  
+                  let headers = ["Data", "Regional", "SVC", "Modal"];
+                  if (effFleetTypeFilter === 'all' || effFleetTypeFilter === 'fixed') {
+                    headers.push("Cadastrado FF", "Rodou FF", "Eficiencia FF (%)");
+                  }
+                  if (effFleetTypeFilter === 'all' || effFleetTypeFilter === 'spot') {
+                    headers.push("Oferta Spot Total", "Utilizado Spot", "Eficiencia Spot (%)");
+                  }
+                  if (effFleetTypeFilter === 'all') {
+                    headers.push("Eficiencia Geral (%)");
+                  }
+                  
+                  const rows = [headers];
+                  
+                  displayData.forEach(item => {
+                    const formattedDate = effConsolidateDates ? item.date : item.date.split('-').reverse().join('/');
+                    const row = [
+                      formattedDate,
+                      item.regional,
+                      item.svc,
+                      item.modal
+                    ];
+                    
+                    const rowFixedTotal = effConsolidateDates ? item.fixedTotalAvg.toFixed(1) : item.fixedTotal.toString();
+                    const rowFixedRan = effConsolidateDates ? item.fixedRanAvg.toFixed(1) : item.fixedRan.toString();
+                    const rowOfferSpot = effConsolidateDates ? item.offerSpotTotalAvg.toFixed(1) : item.offerSpotTotal.toString();
+                    const rowSpotRan = effConsolidateDates ? item.spotRanAvg.toFixed(1) : item.spotRan.toString();
+                    
+                    const rowEffFF = item.fixedTotal > 0 ? ((item.fixedRan / item.fixedTotal) * 100).toFixed(1) : '0.0';
+                    const rowEffSpot = item.offerSpotTotal > 0 ? ((item.spotRan / item.offerSpotTotal) * 100).toFixed(1) : '0.0';
+                    const rowEffGeral = (item.fixedTotal + item.offerSpotTotal) > 0 
+                      ? (((item.fixedRan + item.spotRan) / (item.fixedTotal + item.offerSpotTotal)) * 100).toFixed(1) 
+                      : '0.0';
+                    
+                    if (effFleetTypeFilter === 'all' || effFleetTypeFilter === 'fixed') {
+                      row.push(rowFixedTotal, rowFixedRan, `${rowEffFF}%`);
+                    }
+                    if (effFleetTypeFilter === 'all' || effFleetTypeFilter === 'spot') {
+                      row.push(rowOfferSpot, rowSpotRan, `${rowEffSpot}%`);
+                    }
+                    if (effFleetTypeFilter === 'all') {
+                      row.push(`${rowEffGeral}%`);
+                    }
+                    
+                    rows.push(row);
+                  });
+                  
+                  const csvContent = rows.map(r => r.join(";")).join("\n");
+                  const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement("a");
+                  link.href = url;
+                  link.setAttribute("download", `Eficiencia_Frota_${effStartDate}_a_${effEndDate}.csv`);
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                };
+
+                return (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                      {(effFleetTypeFilter === 'all' || effFleetTypeFilter === 'fixed') && (
+                        <>
+                          <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-5 group">
+                            <div className="absolute -right-6 -top-6 w-20 h-20 bg-blue-500/10 rounded-full blur-xl"></div>
+                            <div className="flex items-center gap-3 mb-3 relative">
+                              <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+                                <span className="material-symbols-outlined text-blue-600 dark:text-blue-400 text-sm">inventory_2</span>
+                              </div>
+                              <h3 className="text-slate-500 dark:text-slate-400 font-bold text-xs tracking-wider uppercase">Média Cadastrada FF</h3>
+                            </div>
+                            <p className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">{avgFixedTotal.toFixed(1)}</p>
+                            <p className="text-[10px] text-slate-400 mt-1.5 dark:text-slate-500">Média diária de veículos ativos</p>
+                          </div>
+
+                          <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-5 group">
+                            <div className="absolute -right-6 -top-6 w-20 h-20 bg-emerald-500/10 rounded-full blur-xl"></div>
+                            <div className="flex items-center gap-3 mb-3 relative">
+                              <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
+                                <span className="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-sm">check_circle</span>
+                              </div>
+                              <h3 className="text-slate-500 dark:text-slate-400 font-bold text-xs tracking-wider uppercase">Média Rodou FF</h3>
+                            </div>
+                            <p className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">{avgFixedRan.toFixed(1)}</p>
+                            <p className="text-[10px] text-slate-400 mt-1.5 dark:text-slate-500">Média diária que operou de fato</p>
+                          </div>
+
+                          <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-5 group">
+                            <div className="absolute -right-6 -top-6 w-20 h-20 bg-indigo-500/10 rounded-full blur-xl"></div>
+                            <div className="flex items-center gap-3 mb-3 relative">
+                              <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center">
+                                <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-sm">speed</span>
+                              </div>
+                              <h3 className="text-slate-500 dark:text-slate-400 font-bold text-xs tracking-wider uppercase">Eficiência FF</h3>
+                            </div>
+                            <div className="flex items-baseline gap-1">
+                              <p className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">{efficiencyFF.toFixed(1)}</p>
+                              <p className="text-lg font-bold text-slate-400 dark:text-slate-400">%</p>
+                            </div>
+                            <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full mt-2.5 overflow-hidden">
+                              <div className="h-full bg-indigo-500" style={{ width: `${Math.min(100, efficiencyFF)}%` }}></div>
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {(effFleetTypeFilter === 'all' || effFleetTypeFilter === 'spot') && (
+                        <>
+                          <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-5 group">
+                            <div className="absolute -right-6 -top-6 w-20 h-20 bg-amber-500/10 rounded-full blur-xl"></div>
+                            <div className="flex items-center gap-3 mb-3 relative">
+                              <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+                                <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-sm">local_shipping</span>
+                              </div>
+                              <h3 className="text-slate-500 dark:text-slate-400 font-bold text-xs tracking-wider uppercase">Média Oferta Spot</h3>
+                            </div>
+                            <p className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">{avgOfferSpot.toFixed(1)}</p>
+                            <p className="text-[10px] text-slate-400 mt-1.5 dark:text-slate-500">Média diária de ofertas (ajustada)</p>
+                          </div>
+
+                          <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-5 group">
+                            <div className="absolute -right-6 -top-6 w-20 h-20 bg-purple-500/10 rounded-full blur-xl"></div>
+                            <div className="flex items-center gap-3 mb-3 relative">
+                              <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center">
+                                <span className="material-symbols-outlined text-purple-600 dark:text-purple-400 text-sm">bolt</span>
+                              </div>
+                              <h3 className="text-slate-500 dark:text-slate-400 font-bold text-xs tracking-wider uppercase">Média Utilizado Spot</h3>
+                            </div>
+                            <p className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">{avgSpotRan.toFixed(1)}</p>
+                            <p className="text-[10px] text-slate-400 mt-1.5 dark:text-slate-500">Carros próprios / terceiros extras</p>
+                          </div>
+
+                          <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-5 group">
+                            <div className="absolute -right-6 -top-6 w-20 h-20 bg-orange-500/10 rounded-full blur-xl"></div>
+                            <div className="flex items-center gap-3 mb-3 relative">
+                              <div className="w-8 h-8 rounded-lg bg-orange-50 dark:bg-orange-500/10 flex items-center justify-center">
+                                <span className="material-symbols-outlined text-orange-600 dark:text-orange-400 text-sm">trending_up</span>
+                              </div>
+                              <h3 className="text-slate-500 dark:text-slate-400 font-bold text-xs tracking-wider uppercase">Eficiência Spot</h3>
+                            </div>
+                            <div className="flex items-baseline gap-1">
+                              <p className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">{efficiencySpot.toFixed(1)}</p>
+                              <p className="text-lg font-bold text-slate-400 dark:text-slate-400">%</p>
+                            </div>
+                            <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full mt-2.5 overflow-hidden">
+                              <div className="h-full bg-orange-500" style={{ width: `${Math.min(100, efficiencySpot)}%` }}></div>
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {effFleetTypeFilter === 'all' && (
+                        <div className="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-md p-5 group">
+                          <div className="absolute -right-6 -top-6 w-20 h-20 bg-rose-500/10 rounded-full blur-xl"></div>
+                          <div className="flex items-center gap-3 mb-3 relative">
+                            <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center">
+                              <span className="material-symbols-outlined text-rose-600 dark:text-rose-400 text-sm">analytics</span>
+                            </div>
+                            <h3 className="text-slate-500 dark:text-slate-400 font-bold text-xs tracking-wider uppercase">Eficiência Geral</h3>
+                          </div>
+                          <div className="flex items-baseline gap-1">
+                            <p className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">{efficiencyGeral.toFixed(1)}</p>
+                            <p className="text-lg font-bold text-slate-400 dark:text-slate-400">%</p>
+                          </div>
+                          <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full mt-2.5 overflow-hidden">
+                            <div className="h-full bg-rose-500" style={{ width: `${Math.min(100, efficiencyGeral)}%` }}></div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)]">
+                      <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-indigo-500">list_alt</span>
+                          <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Histórico de Eficiência da Operação</h3>
+                        </div>
+                        <button 
+                          onClick={handleExportEfficiencyCSV} 
+                          className="py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 text-xs shadow-md transition-all active:scale-95"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">download</span>
+                          Exportar Tabela
+                        </button>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs md:text-sm text-slate-600 dark:text-slate-300 min-w-[1000px]">
+                          <thead className="bg-slate-800 text-slate-100 uppercase text-[10px] md:text-xs font-bold tracking-wider select-none">
+                            <tr>
+                              <th className="px-5 py-4 cursor-pointer hover:bg-slate-700 transition-colors" onClick={() => requestEffSort('date')}>
+                                <div className="flex items-center gap-1">
+                                  Período {effSortConfig?.key === 'date' && <span className="material-symbols-outlined text-[14px]">{effSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                </div>
+                              </th>
+                              <th className="px-5 py-4 cursor-pointer hover:bg-slate-700 transition-colors" onClick={() => requestEffSort('regional')}>
+                                <div className="flex items-center gap-1">
+                                  Regional {effSortConfig?.key === 'regional' && <span className="material-symbols-outlined text-[14px]">{effSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                </div>
+                              </th>
+                              <th className="px-5 py-4 cursor-pointer hover:bg-slate-700 transition-colors" onClick={() => requestEffSort('svc')}>
+                                <div className="flex items-center gap-1">
+                                  Polo/SVC {effSortConfig?.key === 'svc' && <span className="material-symbols-outlined text-[14px]">{effSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                </div>
+                              </th>
+                              <th className="px-5 py-4 cursor-pointer hover:bg-slate-700 transition-colors" onClick={() => requestEffSort('modal')}>
+                                <div className="flex items-center gap-1">
+                                  Modal {effSortConfig?.key === 'modal' && <span className="material-symbols-outlined text-[14px]">{effSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                </div>
+                              </th>
+
+                              {(effFleetTypeFilter === 'all' || effFleetTypeFilter === 'fixed') && (
+                                <>
+                                  <th className="px-5 py-4 text-center cursor-pointer hover:bg-slate-700 transition-colors bg-blue-900/10 border-l border-slate-700" onClick={() => requestEffSort('fixedTotal')}>
+                                    <div className="flex items-center justify-center gap-1">
+                                      Cadastrado FF {effSortConfig?.key === 'fixedTotal' && <span className="material-symbols-outlined text-[14px]">{effSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                    </div>
+                                  </th>
+                                  <th className="px-5 py-4 text-center cursor-pointer hover:bg-slate-700 transition-colors bg-blue-900/10" onClick={() => requestEffSort('fixedRan')}>
+                                    <div className="flex items-center justify-center gap-1">
+                                      Rodou FF {effSortConfig?.key === 'fixedRan' && <span className="material-symbols-outlined text-[14px]">{effSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                    </div>
+                                  </th>
+                                  <th className="px-5 py-4 text-center cursor-pointer hover:bg-slate-700 transition-colors bg-blue-900/15" onClick={() => requestEffSort('effFF')}>
+                                    <div className="flex items-center justify-center gap-1 text-blue-300">
+                                      Eficiência FF {effSortConfig?.key === 'effFF' && <span className="material-symbols-outlined text-[14px]">{effSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                    </div>
+                                  </th>
+                                </>
+                              )}
+
+                              {(effFleetTypeFilter === 'all' || effFleetTypeFilter === 'spot') && (
+                                <>
+                                  <th className="px-5 py-4 text-center cursor-pointer hover:bg-slate-700 transition-colors bg-amber-900/10 border-l border-slate-700" onClick={() => requestEffSort('offerSpotTotal')}>
+                                    <div className="flex items-center justify-center gap-1">
+                                      Oferta Spot {effSortConfig?.key === 'offerSpotTotal' && <span className="material-symbols-outlined text-[14px]">{effSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                    </div>
+                                  </th>
+                                  <th className="px-5 py-4 text-center cursor-pointer hover:bg-slate-700 transition-colors bg-amber-900/10" onClick={() => requestEffSort('spotRan')}>
+                                    <div className="flex items-center justify-center gap-1">
+                                      Utilizado Spot {effSortConfig?.key === 'spotRan' && <span className="material-symbols-outlined text-[14px]">{effSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                    </div>
+                                  </th>
+                                  <th className="px-5 py-4 text-center cursor-pointer hover:bg-slate-700 transition-colors bg-amber-900/15" onClick={() => requestEffSort('effSpot')}>
+                                    <div className="flex items-center justify-center gap-1 text-amber-300">
+                                      Eficiência Spot {effSortConfig?.key === 'effSpot' && <span className="material-symbols-outlined text-[14px]">{effSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                    </div>
+                                  </th>
+                                </>
+                              )}
+
+                              {effFleetTypeFilter === 'all' && (
+                                <th className="px-5 py-4 text-center cursor-pointer hover:bg-slate-700 transition-colors bg-rose-900/15 border-l border-slate-700" onClick={() => requestEffSort('effGeral')}>
+                                  <div className="flex items-center justify-center gap-1 text-rose-300">
+                                    Eficiência Geral {effSortConfig?.key === 'effGeral' && <span className="material-symbols-outlined text-[14px]">{effSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
+                                  </div>
+                                </th>
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                            {displayData.length === 0 ? (
+                              <tr>
+                                <td colSpan={11} className="px-6 py-12 text-center text-slate-400 font-medium dark:text-slate-400 bg-white dark:bg-slate-900">
+                                  Nenhum registro encontrado para os filtros e período selecionados.
+                                </td>
+                              </tr>
+                            ) : (
+                              displayData.map((item, idx) => {
+                                const rowEffFF = item.fixedTotal > 0 ? (item.fixedRan / item.fixedTotal) * 100 : 0;
+                                const rowEffSpot = item.offerSpotTotal > 0 ? (item.spotRan / item.offerSpotTotal) * 100 : 0;
+                                const rowEffGeral = (item.fixedTotal + item.offerSpotTotal) > 0 
+                                  ? ((item.fixedRan + item.spotRan) / (item.fixedTotal + item.offerSpotTotal)) * 100 
+                                  : 0;
+
+                                return (
+                                  <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors">
+                                    <td className="px-5 py-3.5 whitespace-nowrap font-medium text-slate-600 dark:text-slate-300 text-xs">
+                                      {effConsolidateDates ? item.date : item.date.split('-').reverse().join('/')}
+                                    </td>
+                                    <td className="px-5 py-3.5 whitespace-nowrap font-medium text-slate-700 dark:text-slate-300 text-xs">
+                                      {item.regional}
+                                    </td>
+                                    <td className="px-5 py-3.5 whitespace-nowrap font-bold text-slate-800 dark:text-slate-200">
+                                      {item.svc}
+                                    </td>
+                                    <td className="px-5 py-3.5 whitespace-nowrap">
+                                      <span className="text-xs font-semibold text-slate-500 bg-slate-50 dark:bg-slate-900 rounded-md px-2 py-1 border border-slate-100 dark:border-slate-700 dark:text-slate-400">
+                                        {item.modal}
+                                      </span>
+                                    </td>
+
+                                    {(effFleetTypeFilter === 'all' || effFleetTypeFilter === 'fixed') && (
+                                      <>
+                                        <td className="px-5 py-3.5 text-center font-medium bg-blue-50/5 dark:bg-blue-500/[0.01] border-l border-slate-100 dark:border-slate-800">
+                                          {effConsolidateDates ? item.fixedTotalAvg.toFixed(1) : item.fixedTotal}
+                                        </td>
+                                        <td className="px-5 py-3.5 text-center font-semibold text-emerald-600 dark:text-emerald-400 bg-blue-50/5 dark:bg-blue-500/[0.01]">
+                                          {effConsolidateDates ? item.fixedRanAvg.toFixed(1) : item.fixedRan}
+                                        </td>
+                                        <td className="px-5 py-3.5 text-center bg-blue-50/10 dark:bg-blue-500/[0.02]">
+                                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${rowEffFF >= 90 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' : rowEffFF >= 70 ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400'}`}>
+                                            {rowEffFF.toFixed(1)}%
+                                          </span>
+                                        </td>
+                                      </>
+                                    )}
+
+                                    {(effFleetTypeFilter === 'all' || effFleetTypeFilter === 'spot') && (
+                                      <>
+                                        <td className="px-5 py-3.5 text-center font-medium bg-amber-50/5 dark:bg-amber-500/[0.01] border-l border-slate-100 dark:border-slate-800">
+                                          {effConsolidateDates ? item.offerSpotTotalAvg.toFixed(1) : item.offerSpotTotal}
+                                        </td>
+                                        <td className="px-5 py-3.5 text-center font-semibold text-purple-600 dark:text-purple-400 bg-amber-50/5 dark:bg-amber-500/[0.01]">
+                                          {effConsolidateDates ? item.spotRanAvg.toFixed(1) : item.spotRan}
+                                        </td>
+                                        <td className="px-5 py-3.5 text-center bg-amber-50/10 dark:bg-amber-500/[0.02]">
+                                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${rowEffSpot >= 90 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' : rowEffSpot >= 70 ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400'}`}>
+                                            {rowEffSpot.toFixed(1)}%
+                                          </span>
+                                        </td>
+                                      </>
+                                    )}
+
+                                    {effFleetTypeFilter === 'all' && (
+                                      <td className="px-5 py-3.5 text-center bg-rose-50/10 dark:bg-rose-500/[0.02] border-l border-slate-100 dark:border-slate-800">
+                                        <span className={`px-2.5 py-1 rounded-full text-xs font-black ${rowEffGeral >= 90 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' : rowEffGeral >= 70 ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300'}`}>
+                                          {rowEffGeral.toFixed(1)}%
+                                        </span>
+                                      </td>
+                                    )}
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
                 );
@@ -3579,7 +4355,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                       <select value={weeklySvcFilter} onChange={e => setWeeklySvcFilter(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-indigo-500 shadow-sm appearance-none">
                         <option value="">Geral / Todos os SVCs</option>
                         {Array.from(new Set(fixedVehicles.map(v => v.svc_id)))
-                          .filter(s => !weeklyRegionalFilter || MAPEAMENTO_REGIONAIS[weeklyRegionalFilter]?.includes(s))
+                          .filter((s: any) => !weeklyRegionalFilter || MAPEAMENTO_REGIONAIS[weeklyRegionalFilter]?.includes(s))
                           .sort().map(s => (
                            <option key={s} value={s}>{s}</option>
                         ))}
