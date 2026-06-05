@@ -86,7 +86,7 @@ const Navbar: React.FC<NavbarProps> = ({ view, step, onBack, onAdminClick, title
                     <div
                         className="absolute top-0 left-0 h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500 ease-out"
                         style={{
-                            width: step === Step.OFFER_CAPACITY ? '50%' : '100%'
+                            width: step === Step.OFFER_CAPACITY ? '33.3%' : step === Step.CHECKLIST_ACCEPTANCE ? '66.6%' : '100%'
                         }}
                     />
                 </div>

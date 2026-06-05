@@ -31,7 +31,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [fixedVehicles, setFixedVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'|'export'|'director'|'summary'|'efficiency'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'|'export'|'director'|'summary'|'efficiency'|'reports'>('daily');
   const [startDate, setStartDate] = useState<string>(
     getLocalDateString(new Date(new Date().setDate(new Date().getDate() - 7)))
   );
@@ -144,6 +144,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
   const [emailPreviewOpen, setEmailPreviewOpen] = useState(false);
   const [emailPreviewData, setEmailPreviewData] = useState<{to: string[], subject: string, body: string, attachments: any[]} | null>(null);
+
+  // States for Custom Reports Tab
+  const [reportStartDate, setReportStartDate] = useState<string>(
+    getLocalDateString(new Date(new Date().setDate(new Date().getDate() - 30)))
+  );
+  const [reportEndDate, setReportEndDate] = useState<string>(getLocalDateString());
+  const [reportType, setReportType] = useState<'drivers' | 'justifications' | 'spot'>('drivers');
+  const [reportSvcFilter, setReportSvcFilter] = useState('');
+  const [reportSearchText, setReportSearchText] = useState('');
+  const [reportCustomLoading, setReportCustomLoading] = useState(false);
+  const [customReportResults, setCustomReportResults] = useState<any[]>([]);
+  const [reportSortConfig, setReportSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+
+  useEffect(() => {
+    if (activeTab === 'reports' && customReportResults.length === 0) {
+      handleGenerateCustomReport();
+    }
+  }, [activeTab]);
 
   const confirmSendEmail = async () => {
     if (!emailPreviewData) return;
@@ -1222,6 +1240,200 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     setExportLoading(false);
   };
 
+  const handleGenerateCustomReport = async () => {
+    setReportCustomLoading(true);
+    try {
+      const fetchedReports = await getReportsByDateRange(reportStartDate, reportEndDate);
+      let results: any[] = [];
+
+      if (reportType === 'drivers') {
+        fetchedReports.forEach((rep: any) => {
+          const lostList = rep.lost_drivers || [];
+          lostList.forEach((driver: any) => {
+            if (!reportSvcFilter || rep.svc_id === reportSvcFilter) {
+              results.push({
+                date: rep.date,
+                svc: rep.svc_id,
+                name: driver.name || '',
+                fleetType: driver.fleetType || '',
+                plate: driver.plate || '',
+                modal: driver.modal || '',
+                reason: driver.reason || ''
+              });
+            }
+          });
+        });
+      } else if (reportType === 'justifications') {
+        fetchedReports.forEach((rep: any) => {
+          if (!reportSvcFilter || rep.svc_id === reportSvcFilter) {
+            if (rep.justifications) {
+              const justs = rep.justifications.split('; ');
+              justs.forEach((just: string) => {
+                const match = just.match(/"?([A-Za-z0-9-]+)"?\s*-\s*(.*)/);
+                const plate = match ? match[1] : 'N/A';
+                const reason = match ? match[2] : just;
+                results.push({
+                  date: rep.date,
+                  svc: rep.svc_id,
+                  plate,
+                  reason
+                });
+              });
+            }
+          }
+        });
+      } else if (reportType === 'spot') {
+        const fetchedRoutes = await getDailyRoutesByDateRange(reportStartDate, reportEndDate);
+        
+        const mapVehicleToCategory = (rawType: string): string => {
+            const t = rawType.toUpperCase().trim();
+            if (['BULK - VUC EQUIPE ÚNICA POOL', 'UTILITÁRIOS', 'BULK - VAN EQUIPE ÚNICA POOL', 'VAN', 'VEÍCULO DE PASSEIO', 'VUC'].includes(t)) return t;
+            return ''; 
+        };
+
+        const utilizationGroups: Record<string, Set<string>> = {}; 
+        const utilizationCounts: Record<string, number> = {}; 
+        fetchedRoutes.forEach(route => {
+            const routeXpt = (route.xpt || '').trim().toUpperCase();
+            const svc = routeXpt === 'ESP8' ? 'XPT' : (route.svc_id || '').trim();
+            const mappedType = mapVehicleToCategory(route.vehicle_type);
+            if (!svc || !mappedType) return;
+            const key = `${route.date}|${svc}|${mappedType}`;
+            if (!utilizationGroups[key]) utilizationGroups[key] = new Set();
+            utilizationGroups[key].add(route.plate);
+            utilizationCounts[key] = (utilizationCounts[key] || 0) + 1;
+        });
+
+        const combinedData: Record<string, { Date: string, Svc: string, Modals: Record<string, { Offer: number, Utilized: number, UtilizedRoutes: number }> }> = {};
+        fetchedReports.forEach(report => {
+            if (!reportSvcFilter || report.svc_id === reportSvcFilter) {
+              const combinedKey = `${report.date}|${report.svc_id}`;
+              if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: report.date, Svc: report.svc_id, Modals: {} };
+              INITIAL_CATEGORIES.forEach(cat => {
+                  const modalName = cat.name.toUpperCase();
+                  if (!combinedData[combinedKey].Modals[modalName]) combinedData[combinedKey].Modals[modalName] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
+                  combinedData[combinedKey].Modals[modalName].Offer += (report[`offer_${cat.id.replace(/-/g, '_')}`] || 0);
+              });
+            }
+        });
+
+        Object.keys(utilizationGroups).forEach(key => {
+            const [date, svc, vehicleType] = key.split('|');
+            if (!reportSvcFilter || svc === reportSvcFilter) {
+              const combinedKey = `${date}|${svc}`;
+              if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: date, Svc: svc, Modals: {} };
+              if (!combinedData[combinedKey].Modals[vehicleType]) combinedData[combinedKey].Modals[vehicleType] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
+              combinedData[combinedKey].Modals[vehicleType].Utilized += utilizationGroups[key].size;
+              combinedData[combinedKey].Modals[vehicleType].UtilizedRoutes += utilizationCounts[key];
+            }
+        });
+
+        Object.values(combinedData).forEach(entry => {
+            Object.keys(entry.Modals).forEach(modalName => {
+                const item = entry.Modals[modalName];
+                if (item.Offer > 0 || item.Utilized > 0 || item.UtilizedRoutes > 0) {
+                   results.push({
+                      date: entry.Date,
+                      svc: entry.Svc,
+                      modal: modalName,
+                      offer: item.Offer,
+                      utilized: item.Utilized,
+                      utilizedRoutes: item.UtilizedRoutes
+                   });
+                }
+            });
+        });
+      }
+
+      setCustomReportResults(results);
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao gerar relatório: ' + e);
+    } finally {
+      setReportCustomLoading(false);
+    }
+  };
+
+  const handleExportCustomReportCSV = () => {
+    if (customReportResults.length === 0) return;
+    
+    let rows: string[][] = [];
+    let filename = `Relatorio_${reportType}_${reportStartDate}_a_${reportEndDate}.csv`;
+
+    if (reportType === 'drivers') {
+      rows.push(["Data", "SVC", "Nome do Motorista", "Tipo de Frota", "Placa", "Modal", "Motivo da Perda"]);
+      customReportResults.forEach(item => {
+        rows.push([
+          item.date.split('-').reverse().join('/'),
+          item.svc,
+          item.name,
+          item.fleetType,
+          item.plate || 'N/A',
+          item.modal,
+          item.reason
+        ]);
+      });
+    } else if (reportType === 'justifications') {
+      rows.push(["Data", "SVC", "Placa", "Justificativa/Ocorrência"]);
+      customReportResults.forEach(item => {
+        rows.push([
+          item.date.split('-').reverse().join('/'),
+          item.svc,
+          item.plate,
+          item.reason
+        ]);
+      });
+    } else if (reportType === 'spot') {
+      rows.push(["Data", "SVC", "Modal", "Oferta", "Utilizado (Placas)", "Rotas Totais", "Aproveitamento (%)"]);
+      customReportResults.forEach(item => {
+        const perc = item.offer > 0 ? ((item.utilized / item.offer) * 100).toFixed(1) : '0.0';
+        rows.push([
+          item.date.split('-').reverse().join('/'),
+          item.svc,
+          item.modal,
+          item.offer.toString(),
+          item.utilized.toString(),
+          item.utilizedRoutes.toString(),
+          `${perc}%`
+        ]);
+      });
+    }
+
+    const csvContent = rows.map(r => r.join(";")).join("\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleReportSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (reportSortConfig && reportSortConfig.key === key && reportSortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setReportSortConfig({ key, direction });
+
+    const sorted = [...customReportResults].sort((a, b) => {
+      let aVal = a[key];
+      let bVal = b[key];
+
+      if (key === 'performance') {
+        aVal = a.offer > 0 ? (a.utilized / a.offer) : 0;
+        bVal = b.offer > 0 ? (b.utilized / b.offer) : 0;
+      }
+
+      if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    setCustomReportResults(sorted);
+  };
+
   const generateOfferSpotCSVString = async (dateStr: string) => {
     const [fetchedReports, fetchedRoutes] = await Promise.all([
       getReportsByDateRange(dateStr, dateStr),
@@ -1938,7 +2150,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
            { id: 'utilization', label: 'Utilização' },
            { id: 'director', label: 'Ofertas SPOT' },
            { id: 'summary', label: 'Resumo Diário' },
-           { id: 'efficiency', label: 'Eficiência de Frota' }
+           { id: 'efficiency', label: 'Eficiência de Frota' },
+           { id: 'reports', label: 'Relatórios' }
         ].map((tab) => (
           <button 
             key={tab.id}
@@ -1951,6 +2164,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             {tab.id === 'director' && <span className="material-symbols-outlined text-[18px]">dashboard</span>}
             {tab.id === 'summary' && <span className="material-symbols-outlined text-[18px]">analytics</span>}
             {tab.id === 'efficiency' && <span className="material-symbols-outlined text-[18px]">speed</span>}
+            {tab.id === 'reports' && <span className="material-symbols-outlined text-[18px]">description</span>}
             {tab.label.toUpperCase()}
           </button>
         ))}
@@ -4494,6 +4708,284 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             </div>
           );
         })()}
+        </div>
+      ) : activeTab === 'reports' ? (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl p-6 md:p-10 animate-fade-in w-full overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+              <span className="material-symbols-outlined text-white">description</span>
+            </div>
+            <div>
+              <h2 className="text-xl md:text-2xl font-bold text-slate-800 dark:text-white">Central de Relatórios</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Gere relatórios customizados, exporte dados e analise indicadores da operação</p>
+            </div>
+          </div>
+
+          {/* Filters Form */}
+          <div className="bg-slate-50 border border-slate-200 dark:bg-slate-800/40 dark:border-slate-700/50 rounded-2xl p-6 mb-8 shadow-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Tipo de Relatório</label>
+                <select 
+                  value={reportType} 
+                  onChange={e => {
+                    setReportType(e.target.value as any);
+                    setCustomReportResults([]);
+                  }} 
+                  className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-all"
+                >
+                  <option value="drivers">Perda de Motoristas</option>
+                  <option value="justifications">Ocorrências de Frota (Justificativas)</option>
+                  <option value="spot">Oferta vs Utilização (SPOT)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Data Inicial</label>
+                <input 
+                  type="date" 
+                  value={reportStartDate} 
+                  onChange={e => setReportStartDate(e.target.value)} 
+                  max={reportEndDate} 
+                  className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-all" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Data Final</label>
+                <input 
+                  type="date" 
+                  value={reportEndDate} 
+                  onChange={e => setReportEndDate(e.target.value)} 
+                  min={reportStartDate} 
+                  max={getLocalDateString()} 
+                  className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-all" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Filtrar SVC</label>
+                <select 
+                  value={reportSvcFilter} 
+                  onChange={e => setReportSvcFilter(e.target.value)} 
+                  className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-all"
+                >
+                  <option value="">Todos os SVCs</option>
+                  {svcs.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 mt-4 items-center justify-between border-t border-slate-200/50 dark:border-slate-700/50 pt-4">
+              <div className="w-full sm:w-1/3">
+                <input 
+                  type="text" 
+                  value={reportSearchText} 
+                  onChange={e => setReportSearchText(e.target.value)} 
+                  placeholder="Pesquisar placa, motorista, motivo..." 
+                  className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm outline-none" 
+                />
+              </div>
+
+              <div className="flex w-full sm:w-auto gap-3">
+                <button 
+                  onClick={handleGenerateCustomReport} 
+                  disabled={reportCustomLoading}
+                  className="flex-1 sm:flex-initial px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 text-sm shadow-md transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {reportCustomLoading ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  ) : (
+                    <span className="material-symbols-outlined text-[18px]">query_stats</span>
+                  )}
+                  <span>Gerar Relatório</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Report Results */}
+          {reportCustomLoading ? (
+            <div className="flex flex-col items-center justify-center p-16 w-full">
+              <div className="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-600 rounded-full animate-spin"></div>
+              <p className="mt-4 text-slate-500 dark:text-slate-400 font-medium animate-pulse">Compilando dados do relatório...</p>
+            </div>
+          ) : (
+            <>
+              {customReportResults.length > 0 ? (
+                <div className="space-y-6">
+                  {/* KPI summary section */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm">
+                      <span className="text-slate-500 dark:text-slate-400 font-bold text-xs uppercase tracking-wide">Total de Registros</span>
+                      <span className="text-3xl font-black text-slate-800 dark:text-white block mt-1">{customReportResults.length}</span>
+                    </div>
+
+                    {reportType === 'drivers' && (
+                      <div className="bg-rose-50 dark:bg-rose-950/20 rounded-2xl border border-rose-100 dark:border-rose-900/40 p-5 shadow-sm">
+                        <span className="text-rose-500 dark:text-rose-400 font-bold text-xs uppercase tracking-wide">Perdas de Motoristas</span>
+                        <span className="text-3xl font-black text-rose-700 dark:text-rose-400 block mt-1">
+                          {customReportResults.length}
+                        </span>
+                      </div>
+                    )}
+
+                    {reportType === 'justifications' && (
+                      <div className="bg-amber-50 dark:bg-amber-950/20 rounded-2xl border border-amber-100 dark:border-amber-900/40 p-5 shadow-sm">
+                        <span className="text-amber-500 dark:text-amber-400 font-bold text-xs uppercase tracking-wide">Ocorrências Sem Driver</span>
+                        <span className="text-3xl font-black text-amber-700 dark:text-amber-400 block mt-1">
+                          {customReportResults.filter(r => r.reason && r.reason.toLowerCase().includes('sem driver')).length}
+                        </span>
+                      </div>
+                    )}
+
+                    {reportType === 'spot' && (
+                      <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-100 dark:border-emerald-900/40 p-5 shadow-sm">
+                        <span className="text-emerald-500 dark:text-emerald-400 font-bold text-xs uppercase tracking-wide">Aproveitamento Médio SPOT</span>
+                        <span className="text-3xl font-black text-emerald-700 dark:text-emerald-400 block mt-1">
+                          {(() => {
+                            const totOffer = customReportResults.reduce((sum, r) => sum + r.offer, 0);
+                            const totUtil = customReportResults.reduce((sum, r) => sum + r.utilized, 0);
+                            return totOffer > 0 ? `${((totUtil / totOffer) * 100).toFixed(1)}%` : '0.0%';
+                          })()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions (Export & Print) */}
+                  <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">Resultados da Consulta</span>
+                    <div className="flex gap-3">
+                      <button 
+                        onClick={handleExportCustomReportCSV} 
+                        className="px-4 py-2 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 text-xs shadow-md transition-all active:scale-95"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">download</span>
+                        <span>Exportar CSV</span>
+                      </button>
+                      <button 
+                        onClick={() => window.print()} 
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 text-xs shadow-md transition-all active:scale-95"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">print</span>
+                        <span>Imprimir</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Results Table */}
+                  <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-xl">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider">
+                        {reportType === 'drivers' && (
+                          <tr>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('date')}>Data</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('svc')}>SVC</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('name')}>Motorista</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('fleetType')}>Frota</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('plate')}>Placa</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('modal')}>Modal</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('reason')}>Motivo da Perda</th>
+                          </tr>
+                        )}
+                        {reportType === 'justifications' && (
+                          <tr>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('date')}>Data</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('svc')}>SVC</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('plate')}>Placa</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('reason')}>Justificativa / Ocorrência</th>
+                          </tr>
+                        )}
+                        {reportType === 'spot' && (
+                          <tr>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('date')}>Data</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('svc')}>SVC</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('modal')}>Modal</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('offer')}>Oferta</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('utilized')}>Utilizado</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('utilizedRoutes')}>Rotas Totais</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('performance')}>Aproveitamento</th>
+                          </tr>
+                        )}
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                        {customReportResults
+                          .filter(item => {
+                            const term = reportSearchText.toLowerCase();
+                            if (!term) return true;
+                            if (reportType === 'drivers') {
+                              return (
+                                (item.name || '').toLowerCase().includes(term) ||
+                                (item.reason || '').toLowerCase().includes(term) ||
+                                (item.plate || '').toLowerCase().includes(term) ||
+                                (item.svc || '').toLowerCase().includes(term)
+                              );
+                            } else if (reportType === 'justifications') {
+                              return (
+                                (item.plate || '').toLowerCase().includes(term) ||
+                                (item.reason || '').toLowerCase().includes(term) ||
+                                (item.svc || '').toLowerCase().includes(term)
+                              );
+                            } else {
+                              return (
+                                (item.modal || '').toLowerCase().includes(term) ||
+                                (item.svc || '').toLowerCase().includes(term)
+                              );
+                            }
+                          })
+                          .map((item, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                              <td className="px-5 py-3.5 font-medium text-slate-600 dark:text-slate-300">{item.date.split('-').reverse().join('/')}</td>
+                              <td className="px-5 py-3.5 font-bold text-slate-850 dark:text-slate-200">{item.svc}</td>
+                              
+                              {reportType === 'drivers' && (
+                                <>
+                                  <td className="px-5 py-3.5 font-bold text-slate-700 dark:text-slate-350">{item.name}</td>
+                                  <td className="px-5 py-3.5"><span className="text-xs font-bold px-2 py-1 rounded bg-slate-100 dark:bg-slate-800">{item.fleetType}</span></td>
+                                  <td className="px-5 py-3.5 font-mono font-bold">{item.plate || '-'}</td>
+                                  <td className="px-5 py-3.5 text-xs text-slate-500 dark:text-slate-400 font-semibold">{item.modal}</td>
+                                  <td className="px-5 py-3.5 text-slate-600 dark:text-slate-400 italic">"{item.reason}"</td>
+                                </>
+                              )}
+
+                              {reportType === 'justifications' && (
+                                <>
+                                  <td className="px-5 py-3.5"><span className="font-mono font-bold bg-slate-100 dark:bg-slate-900 rounded px-2.5 py-1 border border-slate-200 dark:border-slate-800">{item.plate}</span></td>
+                                  <td className="px-5 py-3.5 text-slate-600 dark:text-slate-400 font-medium">{item.reason}</td>
+                                </>
+                              )}
+
+                              {reportType === 'spot' && (
+                                <>
+                                  <td className="px-5 py-3.5 font-semibold text-slate-500 dark:text-slate-400">{item.modal}</td>
+                                  <td className="px-5 py-3.5 font-bold text-center">{item.offer}</td>
+                                  <td className="px-5 py-3.5 font-bold text-center text-indigo-600 dark:text-indigo-400">{item.utilized}</td>
+                                  <td className="px-5 py-3.5 font-bold text-center text-amber-600 dark:text-amber-400">{item.utilizedRoutes}</td>
+                                  <td className="px-5 py-3.5 text-center">
+                                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${item.utilized >= item.offer ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400'}`}>
+                                      {item.offer > 0 ? ((item.utilized / item.offer) * 100).toFixed(0) : '0'}%
+                                    </span>
+                                  </td>
+                                </>
+                              )}
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center p-12 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
+                  <span className="material-symbols-outlined text-4xl text-slate-400 mb-2">find_in_page</span>
+                  <p className="text-slate-500 dark:text-slate-400 font-medium">Nenhum dado gerado. Clique em "Gerar Relatório" para carregar as informações.</p>
+                </div>
+              )}
+            </>
+          )}
         </div>
       ) : activeTab === 'audit' && auditResults && auditResults.dbRouteCount > 0 ? (
         <div className="space-y-6">

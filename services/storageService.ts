@@ -80,7 +80,8 @@ export const saveReport = async (data: FormData): Promise<SavedReport | null> =>
     acceptance_type: data.acceptanceType,
     ...categoryData,
     justifications: justificationsStr,
-    attachment_url: attachmentUrl
+    attachment_url: attachmentUrl,
+    lost_drivers: data.lostDrivers || []
   };
 
   const { data: insertedData, error } = await supabase

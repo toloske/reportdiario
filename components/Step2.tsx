@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { FormData, VehicleStatus } from '../types';
 import { JUSTIFICATION_OPTIONS } from '../constants';
 
@@ -12,6 +12,8 @@ interface Step2Props {
 }
 
 const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSaving }) => {
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+
   const handleSubmit = () => {
     const missingJustification = data.vehicleStatuses.find(v => !v.ranToday && !v.justification);
     if (missingJustification) {
@@ -27,7 +29,12 @@ const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSav
       return;
     }
 
-    onSubmit();
+    const nonRunningVehicles = data.vehicleStatuses.filter(v => !v.ranToday);
+    if (nonRunningVehicles.length > 0) {
+      setShowConfirmModal(true);
+    } else {
+      onSubmit();
+    }
   };
   const updateVehicle = (plate: string, updates: Partial<VehicleStatus>) => {
     const newStatuses = data.vehicleStatuses.map(v =>
@@ -241,23 +248,61 @@ const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSav
           </button>
           <button
             onClick={handleSubmit}
-            disabled={isSaving}
-            className="col-span-3 h-14 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70"
+            className="col-span-3 h-14 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2"
           >
-            {isSaving ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                <span>Salvando Dados...</span>
-              </>
-            ) : (
-              <>
-                <span>Finalizar e Salvar</span>
-                <span className="material-symbols-outlined text-xl">save</span>
-              </>
-            )}
+            <span>Próximo: Motoristas Perdidos</span>
+            <span className="material-symbols-outlined text-xl">arrow_forward</span>
           </button>
         </div>
       </footer>
+
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 mb-4 text-amber-500 dark:text-amber-400">
+              <span className="material-symbols-outlined text-3xl">warning</span>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                Confirmar veículos
+              </h3>
+            </div>
+            
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+              Você marcou que as seguintes placas <strong>NÃO rodaram hoje</strong>. Confirma que são essas placas mesmo?
+            </p>
+
+            <div className="max-h-48 overflow-y-auto mb-6 divide-y divide-slate-100 dark:divide-slate-800 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-950 p-2">
+              {data.vehicleStatuses
+                .filter(v => !v.ranToday)
+                .map(v => (
+                  <div key={v.plate} className="py-2 px-1 flex justify-between items-center text-xs">
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{v.plate}</span>
+                    <span className="text-slate-500 dark:text-slate-400 italic truncate max-w-[180px]">{v.justification}</span>
+                  </div>
+                ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="h-11 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-95 transition-all"
+              >
+                Não, corrigir
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConfirmModal(false);
+                  onSubmit();
+                }}
+                className="h-11 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl shadow-md active:scale-95 transition-all"
+              >
+                Sim, confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

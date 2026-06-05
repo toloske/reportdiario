@@ -4,6 +4,7 @@ import { Step, View, FormData } from './types';
 import { INITIAL_CATEGORIES } from './constants';
 import Step1 from './components/Step1';
 import Step2 from './components/Step2';
+import Step3 from './components/Step3';
 import AnalysisSummary from './components/AnalysisSummary';
 import AdminDashboard from './components/AdminDashboard';
 import Navbar from './components/Navbar';
@@ -33,6 +34,7 @@ const App: React.FC = () => {
     vehicleStatuses: [],
     acceptanceType: 'D-1',
     attachment: null,
+    lostDrivers: [],
   });
 
   // Fetch SVCs on mount
@@ -68,7 +70,8 @@ const App: React.FC = () => {
             justification: '',
             otherJustification: '',
             modal: v.modal,
-            operation: v.operation
+            operation: v.operation,
+            fleetType: v.fleet_type
           }))
         }));
       } catch (error) {
@@ -104,6 +107,7 @@ const App: React.FC = () => {
       vehicleStatuses: [],
       acceptanceType: 'D-1',
       attachment: null,
+      lostDrivers: [],
     });
     setStep(Step.OFFER_CAPACITY);
     setView(View.FORM);
@@ -112,7 +116,9 @@ const App: React.FC = () => {
   const getTitle = () => {
     if (view === View.ADMIN) return "Painel Administrativo";
     if (view === View.SUCCESS) return "Envio Concluído";
-    return step === Step.OFFER_CAPACITY ? "Oferta e Capacidade" : "Checklist e Aceite";
+    if (step === Step.OFFER_CAPACITY) return "Oferta e Capacidade";
+    if (step === Step.CHECKLIST_ACCEPTANCE) return "Checklist e Aceite";
+    return "Motoristas Perdidos";
   };
 
   if (loadingSvcs) {
@@ -129,7 +135,13 @@ const App: React.FC = () => {
       <Navbar
         view={view}
         step={step}
-        onBack={() => setStep(Step.OFFER_CAPACITY)}
+        onBack={() => {
+          if (step === Step.LOST_DRIVERS) {
+            setStep(Step.CHECKLIST_ACCEPTANCE);
+          } else {
+            setStep(Step.OFFER_CAPACITY);
+          }
+        }}
         onAdminClick={() => setView(View.ADMIN)}
         title={getTitle()}
       />
@@ -154,6 +166,16 @@ const App: React.FC = () => {
             data={formData}
             updateData={updateFormData}
             onBack={() => setStep(Step.OFFER_CAPACITY)}
+            onSubmit={() => setStep(Step.LOST_DRIVERS)}
+            isSaving={isSaving}
+          />
+        )}
+
+        {view === View.FORM && step === Step.LOST_DRIVERS && (
+          <Step3
+            data={formData}
+            updateData={updateFormData}
+            onBack={() => setStep(Step.CHECKLIST_ACCEPTANCE)}
             onSubmit={handleFinish}
             isSaving={isSaving}
           />
