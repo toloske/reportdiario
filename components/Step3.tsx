@@ -64,8 +64,8 @@ const Step3: React.FC<Step3Props> = ({ data, updateData, onBack, onSubmit, isSav
       alert('Por favor, selecione o modal.');
       return;
     }
-    if ((fleetType === 'FROTA FIXA' || fleetType === 'FROTA PRÓPRIA') && !plate) {
-      alert('Por favor, selecione a placa do veículo.');
+    if (!plate.trim()) {
+      alert(fleetType === 'SPOT' ? 'Por favor, informe a placa do veículo.' : 'Por favor, selecione a placa do veículo.');
       return;
     }
     if (!reason.trim()) {
@@ -78,7 +78,7 @@ const Step3: React.FC<Step3Props> = ({ data, updateData, onBack, onSubmit, isSav
       name: name.trim(),
       modal,
       fleetType,
-      plate: (fleetType === 'FROTA FIXA' || fleetType === 'FROTA PRÓPRIA') ? plate : undefined,
+      plate: plate.trim().toUpperCase() || undefined,
       reason: reason.trim()
     };
 
@@ -222,8 +222,19 @@ const Step3: React.FC<Step3Props> = ({ data, updateData, onBack, onSubmit, isSav
                   </div>
                 )}
 
-                {/* 3. Modal Selection (Pre-filled dynamically if Frota) */}
-                {(fleetType === 'FROTA FIXA' || fleetType === 'FROTA PRÓPRIA') && (
+                {/* 3. Placa Input (If Spot) OR Modal Selection (If Frota) */}
+                {fleetType === 'SPOT' ? (
+                  <div className="col-span-2">
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Placa do Veículo (SPOT)</label>
+                    <input
+                      type="text"
+                      className="w-full h-11 px-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all dark:text-white uppercase"
+                      placeholder="Ex: ABC1D23 ou ABC1234"
+                      value={plate}
+                      onChange={(e) => setPlate(e.target.value)}
+                    />
+                  </div>
+                ) : (
                   <div className="col-span-2">
                     <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Modal (Preenchido Automático)</label>
                     <select
