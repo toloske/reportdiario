@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { FormData } from '../types';
 import { SVC } from '../services/dataService';
 
@@ -11,6 +11,22 @@ interface Step1Props {
 }
 
 const Step1: React.FC<Step1Props> = ({ data, updateData, onNext, svcOptions }) => {
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  const handleNext = () => {
+    // Check if there are any non-zero/non-null offers or capacities entered
+    const hasSpotOffers = data.categories.some(c => 
+      (c.offer !== null && c.offer > 0) || 
+      (c.capacity !== null && c.capacity > 0)
+    );
+    
+    if (hasSpotOffers) {
+      setShowConfirmModal(true);
+    } else {
+      onNext();
+    }
+  };
+
   const handleCategoryChange = (id: string, field: 'offer' | 'capacity', value: string) => {
     const numValue = value === '' ? null : parseInt(value);
     const newCategories = data.categories.map(c =>
@@ -126,7 +142,7 @@ const Step1: React.FC<Step1Props> = ({ data, updateData, onNext, svcOptions }) =
       <footer className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 z-50">
         <div className="max-w-md mx-auto">
           <button
-            onClick={onNext}
+            onClick={handleNext}
             disabled={!data.svc || data.categories.some(c => c.offer === null || c.capacity === null)}
             className="w-full h-14 bg-primary text-white font-bold rounded-xl flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-50 disabled:active:scale-100 disabled:cursor-not-allowed"
           >
@@ -135,6 +151,57 @@ const Step1: React.FC<Step1Props> = ({ data, updateData, onNext, svcOptions }) =
           </button>
         </div>
       </footer>
+
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 mb-4 text-amber-500 dark:text-amber-400">
+              <span className="material-symbols-outlined text-3xl">warning</span>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                Confirmar Ofertas SPOT
+              </h3>
+            </div>
+            
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+              Essas são suas ofertas de <strong>Carros SPOT</strong>? Não podemos ter carros <strong>FF (Frota Fixa)</strong> ofertados aqui:
+            </p>
+
+            <div className="max-h-48 overflow-y-auto mb-6 divide-y divide-slate-100 dark:divide-slate-800 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-950 p-2">
+              {data.categories
+                .filter(c => (c.offer !== null && c.offer > 0) || (c.capacity !== null && c.capacity > 0))
+                .map(c => (
+                  <div key={c.id} className="py-2 px-1 flex flex-col gap-0.5 text-xs">
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{c.name}</span>
+                    <div className="flex gap-4 text-slate-500 dark:text-slate-400">
+                      <span>Oferta: <strong>{c.offer ?? 0}</strong></span>
+                      <span>Capacidade: <strong>{c.capacity ?? 0}</strong></span>
+                    </div>
+                  </div>
+                ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="h-11 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-95 transition-all"
+              >
+                Não, corrigir
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConfirmModal(false);
+                  onNext();
+                }}
+                className="h-11 bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl shadow-md active:scale-95 transition-all"
+              >
+                Sim, confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
