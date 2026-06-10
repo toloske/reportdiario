@@ -3,7 +3,9 @@ import html2canvas from 'html2canvas';
 import { supabase } from '../services/supabaseClient';
 import { getReportsByDate, getReportsByDateRange, saveDailyRoutes, getDailyRoutesByDate, getDailyRoutesByDateRange, updateReportJustifications, updateReportOffer, updateReportCapacity } from '../services/storageService';
 import { dataService, SVC, Vehicle } from '../services/dataService';
+import { whatsappService } from '../services/whatsappService';
 import { INITIAL_CATEGORIES, JUSTIFICATION_OPTIONS } from '../constants';
+
 import Papa from 'papaparse';
 
 const MAPEAMENTO_REGIONAIS: Record<string, string[]> = {
@@ -30,6 +32,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [svcs, setSvcs] = useState<SVC[]>([]);
   const [fixedVehicles, setFixedVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(false);
+  const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
+
+  const handleSendWhatsapp = async (message: string) => {
+    setSendingWhatsapp(true);
+    try {
+      await whatsappService.sendText(message);
+      alert("Cobrança enviada com sucesso via WhatsApp!");
+    } catch (error: any) {
+      alert("Falha ao enviar cobrança via WhatsApp: " + error.message);
+    } finally {
+      setSendingWhatsapp(false);
+    }
+  };
   
   const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'|'export'|'director'|'summary'|'efficiency'|'reports'>('daily');
   const [startDate, setStartDate] = useState<string>(
@@ -3654,22 +3669,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               
               {missingSvcs.length > 0 && (
                 <button
+                  disabled={sendingWhatsapp}
                   onClick={() => {
                      const svcsStr = missingSvcs.map(s => s.name).join('\n');
                      const dataFormatada = selectedDate.split('-').reverse().join('/');
                      const mensagem = `Faltam responder o forms dia ${dataFormatada}\n\nSVCS:\n${svcsStr}`;
-                     
-                     // wa.me without a number opens the WhatsApp web/app and prompts to "Select your contact/group"
-                     const url = `https://wa.me/?text=${encodeURIComponent(mensagem)}`;
-                     window.open(url, '_blank');
+                     handleSendWhatsapp(mensagem);
                   }}
-                  className="px-4 py-2 bg-[#25D366] hover:bg-[#1DA851] text-white text-xs font-bold rounded-xl flex items-center gap-2 active:scale-95 transition-all shadow-md shadow-green-500/20"
+                  className={`px-4 py-2 text-white text-xs font-bold rounded-xl flex items-center gap-2 active:scale-95 transition-all shadow-md ${sendingWhatsapp ? 'bg-slate-400 cursor-not-allowed shadow-none' : 'bg-[#25D366] hover:bg-[#1DA851] shadow-green-500/20'}`}
                 >
-                  <img 
-                      src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='white'%3E%3Cpath d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z'/%3E%3C/svg%3E" 
-                      alt="WhatsApp" 
-                  />
-                  Cobrar Faltantes no WhatsApp
+                  {sendingWhatsapp ? (
+                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                  ) : (
+                    <img 
+                        src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='white'%3E%3Cpath d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z'/%3E%3C/svg%3E" 
+                        alt="WhatsApp" 
+                    />
+                  )}
+                  {sendingWhatsapp ? 'Enviando cobrança...' : 'Cobrar Faltantes no WhatsApp'}
                 </button>
               )}
             </div>
@@ -4237,18 +4254,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                 Erros de Preenchimento ({visibleErrors.length} placa{visibleErrors.length !== 1 ? 's' : ''})
                               </h4>
                               <button
+                                disabled={sendingWhatsapp}
                                 onClick={() => {
                                   const mensagem = buildMessage();
-                                  const url = `https://wa.me/?text=${encodeURIComponent(mensagem)}`;
-                                  window.open(url, '_blank');
+                                  handleSendWhatsapp(mensagem);
                                 }}
-                                className="px-4 py-2 bg-[#25D366] hover:bg-[#1DA851] text-white text-xs font-bold rounded-xl flex items-center gap-2 active:scale-95 transition-all shadow-md shadow-green-500/20"
+                                className={`px-4 py-2 text-white text-xs font-bold rounded-xl flex items-center gap-2 active:scale-95 transition-all shadow-md ${sendingWhatsapp ? 'bg-slate-400 cursor-not-allowed shadow-none' : 'bg-[#25D366] hover:bg-[#1DA851] shadow-green-500/20'}`}
                               >
-                                <img
-                                  src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='white'%3E%3Cpath d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z'/%3E%3C/svg%3E"
-                                  alt="WhatsApp"
-                                />
-                                Enviar Erros via WhatsApp
+                                {sendingWhatsapp ? (
+                                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                                ) : (
+                                  <img
+                                    src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='white'%3E%3Cpath d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z'/%3E%3C/svg%3E"
+                                    alt="WhatsApp"
+                                  />
+                                )}
+                                {sendingWhatsapp ? 'Enviando erros...' : 'Enviar Erros via WhatsApp'}
                               </button>
                             </div>
                             <div className="flex flex-wrap gap-2.5 p-1 mt-2">
@@ -4273,18 +4294,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                 Veículos Sem Driver ({visibleSemDriver.length} placa{visibleSemDriver.length !== 1 ? 's' : ''})
                               </h4>
                               <button
+                                disabled={sendingWhatsapp}
                                 onClick={() => {
                                   const mensagem = buildSemDriverMessage();
-                                  const url = `https://wa.me/?text=${encodeURIComponent(mensagem)}`;
-                                  window.open(url, '_blank');
+                                  handleSendWhatsapp(mensagem);
                                 }}
-                                className="px-4 py-2 bg-[#25D366] hover:bg-[#1DA851] text-white text-xs font-bold rounded-xl flex items-center gap-2 active:scale-95 transition-all shadow-md shadow-green-500/20"
+                                className={`px-4 py-2 text-white text-xs font-bold rounded-xl flex items-center gap-2 active:scale-95 transition-all shadow-md ${sendingWhatsapp ? 'bg-slate-400 cursor-not-allowed shadow-none' : 'bg-[#25D366] hover:bg-[#1DA851] shadow-green-500/20'}`}
                               >
-                                <img
-                                  src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='white'%3E%3Cpath d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z'/%3E%3C/svg%3E"
-                                  alt="WhatsApp"
-                                />
-                                Cobrar Sem Driver via WhatsApp
+                                {sendingWhatsapp ? (
+                                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                                ) : (
+                                  <img
+                                    src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='white'%3E%3Cpath d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z'/%3E%3C/svg%3E"
+                                    alt="WhatsApp"
+                                  />
+                                )}
+                                {sendingWhatsapp ? 'Enviando cobrança...' : 'Cobrar Sem Driver via WhatsApp'}
                               </button>
                             </div>
                             <div className="flex flex-wrap gap-2.5 p-1 mt-2">
