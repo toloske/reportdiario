@@ -330,7 +330,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         ]);
         
         const validSvcIds = svcs
-          .filter(svc => mercadoLivreSvcs.includes(svc.id) && svc.name !== 'FIRST MILE' && svc.id !== 'XPT')
+          .filter(svc => mercadoLivreSvcs.includes(svc.id) && svc.name !== 'FIRST MILE')
           .map(svc => svc.id);
 
         const validFixedPlates = fixedVehicles
@@ -601,7 +601,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         ]);
 
         const currentFixedVehicles = fixedVehicles.filter(v => 
-            v.svc_id !== 'XPT' &&
             (!weeklyRegionalFilter || MAPEAMENTO_REGIONAIS[weeklyRegionalFilter]?.includes(v.svc_id)) &&
             (weeklySvcFilter === '' || v.svc_id === weeklySvcFilter)
         );
@@ -620,7 +619,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         });
 
         fetchedReports.forEach(rep => {
-            if (rep.svc_id !== 'XPT' &&
+            if (
                 (!weeklyRegionalFilter || MAPEAMENTO_REGIONAIS[weeklyRegionalFilter]?.includes(rep.svc_id)) &&
                 (weeklySvcFilter === '' || rep.svc_id === weeklySvcFilter)) {
                 // Populate Spot Offer
@@ -648,7 +647,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         const spotRanCounts: Record<string, number> = {};
         fetchedRoutes.forEach(r => {
              const svc = r.xpt?.toUpperCase() === 'ESP8' ? 'XPT' : (r.svc_id || '');
-             if (svc !== 'XPT' &&
+             if (
                  (!weeklyRegionalFilter || MAPEAMENTO_REGIONAIS[weeklyRegionalFilter]?.includes(svc)) &&
                  (weeklySvcFilter === '' || svc === weeklySvcFilter)) {
                  if (!validFixedPlates.includes(r.plate)) {
@@ -1545,7 +1544,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     ]);
     
     const validSvcIds = svcs
-      .filter(svc => mercadoLivreSvcs.includes(svc.id) && svc.name !== 'FIRST MILE' && svc.id !== 'XPT')
+      .filter(svc => mercadoLivreSvcs.includes(svc.id) && svc.name !== 'FIRST MILE')
       .map(svc => svc.id);
 
     const routesByDateAndPlate: Record<string, boolean> = {};
@@ -1625,7 +1624,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       getDailyRoutesByDateRange(startStr, endStr)
     ]);
 
-    const currentFixedVehicles = fixedVehicles.filter(v => v.svc_id !== 'XPT');
+    const currentFixedVehicles = fixedVehicles;
     const validFixedPlates = currentFixedVehicles.map(v => v.plate);
     
     const routesByDateAndPlate: Record<string, boolean> = {};
@@ -1633,7 +1632,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
     const reportCache: Record<string, {reason: string}> = {};
     fetchedReports.forEach(rep => {
-        if (rep.svc_id !== 'XPT' && rep.justifications) {
+        if (rep.justifications) {
             const justs = rep.justifications.split('; ');
             justs.forEach((j: string) => {
                 const match = j.match(/"?([A-Za-z0-9-]+)"?\s*-\s*(.*)/);
@@ -4060,7 +4059,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           {/* DETALHAMENTO PLACA A PLACA */}
           {utilActiveTab === 'details' && detailedUtilizationData.length > 0 && (() => {
              const filteredDetails = detailedUtilizationData.filter(d => 
-                d.svc !== 'XPT' &&
                 (!detRegionalFilter || MAPEAMENTO_REGIONAIS[detRegionalFilter]?.includes(d.svc)) &&
                 (!detSvcFilter || d.svc === detSvcFilter) &&
                 (!detPlateFilter || d.plate.toLowerCase().includes(detPlateFilter.toLowerCase())) &&
