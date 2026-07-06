@@ -2,6 +2,19 @@ import React, { useState } from 'react';
 import { FormData, LostDriver } from '../types';
 import { INITIAL_CATEGORIES } from '../constants';
 
+const PREDEFINED_REASONS = [
+  'Abandono / No-Show',
+  'Bloqueio pelo Cliente (Meli/OTR)',
+  'Inadaptação ao Modelo de Trabalho',
+  'Incompatibilidade de Horários / Indisponibilidade',
+  'Insatisfação com Rotas/Operação',
+  'Insatisfação Financeira',
+  'Migração para Concorrência',
+  'Motivos Pessoais',
+  'Nova Oportunidade Profissional',
+  'Quebra de Regras / Indisciplina'
+];
+
 interface Step3Props {
   data: FormData;
   updateData: (updates: Partial<FormData>) => void;
@@ -267,13 +280,16 @@ const Step3: React.FC<Step3Props> = ({ data, updateData, onBack, onSubmit, isSav
                 {/* 5. Motivo da Perda */}
                 <div className="col-span-2">
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Motivo da Perda</label>
-                  <textarea
-                    className="w-full p-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none dark:text-white"
-                    placeholder="Descreva o motivo da perda do motorista..."
-                    rows={2}
+                  <select
+                    className="custom-select w-full h-11 px-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none dark:text-white"
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                  />
+                  >
+                    <option value="">Selecione o motivo da perda...</option>
+                    {PREDEFINED_REASONS.map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

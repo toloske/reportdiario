@@ -182,6 +182,20 @@ export const updateReportJustifications = async (reportId: string, newJustificat
   }
 };
 
+export const updateReportSupervisorStatuses = async (reportId: string, newSupervisorStatuses: string) => {
+  const { data, error } = await supabase
+    .from('daily_reports')
+    .update({ supervisor_statuses: newSupervisorStatuses })
+    .eq('id', reportId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating report supervisor statuses:', error);
+    throw error;
+  }
+};
+
 export const updateReportOffer = async (date: string, svc_id: string, modalKey: string, newOffer: number) => {
   const { data: existing, error: fetchError } = await supabase
     .from('daily_reports')

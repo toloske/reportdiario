@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import html2canvas from 'html2canvas';
 import { supabase } from '../services/supabaseClient';
-import { getReportsByDate, getReportsByDateRange, saveDailyRoutes, getDailyRoutesByDate, getDailyRoutesByDateRange, updateReportJustifications, updateReportOffer, updateReportCapacity } from '../services/storageService';
+import { getReportsByDate, getReportsByDateRange, saveDailyRoutes, getDailyRoutesByDate, getDailyRoutesByDateRange, updateReportJustifications, updateReportSupervisorStatuses, updateReportOffer, updateReportCapacity } from '../services/storageService';
 import { dataService, SVC, Vehicle } from '../services/dataService';
 import { whatsappService } from '../services/whatsappService';
 import { INITIAL_CATEGORIES, JUSTIFICATION_OPTIONS } from '../constants';
@@ -239,6 +239,47 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     }
   };
 
+  const handleSaveSupervisorStatus = async (date: string, plate: string, reportId: string, isRan: boolean, fullSupervisorStatuses: string) => {
+    if (!reportId) {
+      alert("Não é possível salvar: o relatório diário para este SVC nesta data ainda não foi criado pelo despachante.");
+      return;
+    }
+    setIsSavingJust(true);
+    try {
+      let newStatsArray = (fullSupervisorStatuses || '').split('; ').map(s => s.trim()).filter(Boolean);
+      let found = false;
+      const statusStr = isRan ? '1' : '0';
+      for (let i = 0; i < newStatsArray.length; i++) {
+        const match = newStatsArray[i].match(/"?([A-Za-z0-9-]+)"?\s*-\s*(.*)/);
+        if (match && match[1] === plate) {
+          newStatsArray[i] = `"${plate}" - ${statusStr}`;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        newStatsArray.push(`"${plate}" - ${statusStr}`);
+      }
+
+      const updatedStr = newStatsArray.join('; ');
+      await updateReportSupervisorStatuses(reportId, updatedStr);
+
+      // Local update detailedData to avoid heavy reload
+      setDetailedUtilizationData(prev => prev.map(d => {
+         if (d.reportId === reportId) {
+            const supervisorStatus = d.plate === plate ? isRan : d.supervisorStatus;
+            return { ...d, supervisorStatus, fullSupervisorStatuses: updatedStr };
+         }
+         return d;
+      }));
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao salvar o status do supervisor.");
+    } finally {
+      setIsSavingJust(false);
+    }
+  };
+
   const handleSaveOffer = async (date: string, svc: string, modal: string) => {
     if (editingOfferValue === '' || typeof editingOfferValue !== 'number') return;
     setIsSavingOffer(true);
@@ -460,7 +501,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             routeSvcByDateAndPlate[`${r.date}|${r.plate}`] = r.xpt?.toUpperCase() === 'ESP8' ? 'XPT' : (r.svc_id || '');
         });
 
-        const reportCache: Record<string, {reason: string, reportId: string, fullJustifications: string, svc_id: string}> = {};
+        const reportCache: Record<string, {reason: string, reportId: string, fullJustifications: string, svc_id: string, supervisorStatus?: boolean}> = {};
         const svcReportMap: Record<string, any> = {};
         
         fetchedReports.forEach(rep => {
@@ -471,12 +512,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     justs.forEach((j: string) => {
                         const match = j.match(/"?([A-Za-z0-9-]+)"?\s*-\s*(.*)/);
                         if (match) {
-                            reportCache[`${rep.date}|${match[1]}`] = {
-                                reason: match[2].trim(),
-                                reportId: rep.id,
-                                fullJustifications: rep.justifications,
-                                svc_id: rep.svc_id
-                            };
+                            const plate = match[1];
+                            const reason = match[2].trim();
+                            if (!reportCache[`${rep.date}|${plate}`]) {
+                                reportCache[`${rep.date}|${plate}`] = {
+                                    reason: '',
+                                    reportId: rep.id,
+                                    fullJustifications: rep.justifications,
+                                    svc_id: rep.svc_id
+                                };
+                            }
+                            reportCache[`${rep.date}|${plate}`].reason = reason;
+                            reportCache[`${rep.date}|${plate}`].fullJustifications = rep.justifications;
+                        }
+                    });
+                }
+                if (rep.supervisor_statuses) {
+                    const supStats = rep.supervisor_statuses.split('; ');
+                    supStats.forEach((s: string) => {
+                        const match = s.match(/"?([A-Za-z0-9-]+)"?\s*-\s*(.*)/);
+                        if (match) {
+                            const plate = match[1];
+                            const statusVal = match[2].trim();
+                            if (!reportCache[`${rep.date}|${plate}`]) {
+                                reportCache[`${rep.date}|${plate}`] = {
+                                    reason: '',
+                                    reportId: rep.id,
+                                    fullJustifications: rep.justifications || '',
+                                    svc_id: rep.svc_id
+                                };
+                            }
+                            reportCache[`${rep.date}|${plate}`].supervisorStatus = statusVal === '1';
                         }
                     });
                 }
@@ -527,6 +593,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     const svcEntry = svcReportMap[`${date}|${svc}`];
                     const reportId = cacheEntry ? cacheEntry.reportId : (svcEntry ? svcEntry.id : null);
                     const fullJustifications = cacheEntry ? cacheEntry.fullJustifications : (svcEntry ? svcEntry.justifications : null);
+                    const fullSupervisorStatuses = svcEntry ? (svcEntry.supervisor_statuses || '') : '';
+                    const supervisorStatus = (cacheEntry && cacheEntry.supervisorStatus !== undefined) ? cacheEntry.supervisorStatus : didRun;
                     
                     if (didRun && !reason) {
                         // Rota existe, despachante não preencheu justificativa → rodou via rota
@@ -553,6 +621,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                         reason,
                         reportId,
                         fullJustifications,
+                        supervisorStatus,
+                        fullSupervisorStatuses,
                         fleetType
                     });
                 });
@@ -1554,7 +1624,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         routeSvcByDateAndPlate[`${r.date}|${r.plate}`] = r.xpt?.toUpperCase() === 'ESP8' ? 'XPT' : (r.svc_id || '');
     });
 
-    const reportCache: Record<string, {reason: string, svc_id: string}> = {};
+    const reportCache: Record<string, {reason: string, supervisorStatus?: boolean, svc_id: string}> = {};
     fetchedReports.forEach(rep => {
         if (validSvcIds.includes(rep.svc_id)) {
             if (rep.justifications) {
@@ -1562,7 +1632,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 justs.forEach((j: string) => {
                     const match = j.match(/"?([A-Za-z0-9-]+)"?\s*-\s*(.*)/);
                     if (match) {
-                        reportCache[`${rep.date}|${match[1]}`] = { reason: match[2].trim(), svc_id: rep.svc_id };
+                        const plate = match[1];
+                        if (!reportCache[`${rep.date}|${plate}`]) {
+                            reportCache[`${rep.date}|${plate}`] = { reason: '', svc_id: rep.svc_id };
+                        }
+                        reportCache[`${rep.date}|${plate}`].reason = match[2].trim();
+                    }
+                });
+            }
+            if (rep.supervisor_statuses) {
+                const supStats = rep.supervisor_statuses.split('; ');
+                supStats.forEach((s: string) => {
+                    const match = s.match(/"?([A-Za-z0-9-]+)"?\s*-\s*(.*)/);
+                    if (match) {
+                        const plate = match[1];
+                        const statusVal = match[2].trim();
+                        if (!reportCache[`${rep.date}|${plate}`]) {
+                            reportCache[`${rep.date}|${plate}`] = { reason: '', svc_id: rep.svc_id };
+                        }
+                        reportCache[`${rep.date}|${plate}`].supervisorStatus = statusVal === '1';
                     }
                 });
             }
@@ -1587,18 +1675,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         const didRun = routesByDateAndPlate[`${dateStr}|${plate}`] || false;
         const cacheEntry = reportCache[`${dateStr}|${plate}`];
         let reason = cacheEntry ? cacheEntry.reason : '';
+        const supervisorStatus = (cacheEntry && cacheEntry.supervisorStatus !== undefined) ? cacheEntry.supervisorStatus : didRun;
         
         if (didRun && !reason) reason = 'RODOU (Identificado via Rota)';
         else if (didRun && reason && !reason.toUpperCase().includes('RODOU')) reason = `[RODOU] ${reason}`;
         else if (!didRun && reason && reason.toUpperCase() === 'RODOU') reason = 'RODOU';
         else if (!didRun && !reason) reason = 'Sem justificativa preenchida';
 
-        detailedData.push({ date: dateStr, svc, plate, didRun, reason, fleetType });
+        detailedData.push({ date: dateStr, svc, plate, didRun, supervisorStatus, reason, fleetType });
     });
 
-    const rows = [["Data", "SVC", "Placa", "Frota", "Carregou (1=Sim/0=Nao)", "Justificativa"]];
+    const rows = [["Data", "SVC", "Placa", "Frota", "Carregou (1=Sim/0=Nao)", "Justificativa", "Validação Supervisor"]];
     detailedData.forEach(d => {
-       rows.push([d.date.split('-').reverse().join('/'), d.svc, d.plate, d.fleetType, d.didRun ? '1' : '0', d.reason]);
+       rows.push([d.date.split('-').reverse().join('/'), d.svc, d.plate, d.fleetType, d.didRun ? '1' : '0', d.reason, d.supervisorStatus ? 'Validado' : 'Não Validado']);
     });
     const csvString = "\uFEFF" + rows.map(r => r.join(";")).join("\n");
     return { detailedData, csvString };
@@ -4089,6 +4178,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     bVal = b.didRun ? 1 : 0;
                  }
                  
+                 if (detSortConfig.key === 'supervisorStatus') {
+                    aVal = a.supervisorStatus ? 1 : 0;
+                    bVal = b.supervisorStatus ? 1 : 0;
+                 }
+                 
                  if (aVal < bVal) return detSortConfig.direction === 'asc' ? -1 : 1;
                  if (aVal > bVal) return detSortConfig.direction === 'asc' ? 1 : -1;
                  return 0;
@@ -4102,9 +4196,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
              };
              
              const handleExportDetailedPlate = () => {
-                const rows = [["Data", "SVC", "Placa", "Frota", "Carregou (1=Sim/0=Nao)", "Justificativa"]];
+                const rows = [["Data", "SVC", "Placa", "Frota", "Carregou (1=Sim/0=Nao)", "Justificativa", "Validação Supervisor"]];
                 finalDisplayedDetails.forEach(d => {
-                   rows.push([d.date.split('-').reverse().join('/'), d.svc, d.plate, d.fleetType, d.didRun ? '1' : '0', d.reason]);
+                   rows.push([d.date.split('-').reverse().join('/'), d.svc, d.plate, d.fleetType, d.didRun ? '1' : '0', d.reason, d.supervisorStatus ? 'Validado' : 'Não Validado']);
                 });
                 const csvContent = rows.map(r => r.join(";")).join("\n");
                 const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
