@@ -1230,14 +1230,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         utilizationCounts[key] = (utilizationCounts[key] || 0) + 1;
     });
 
-    const combinedData: Record<string, { Date: string, Svc: string, Modals: Record<string, { Offer: number, Utilized: number, UtilizedRoutes: number }> }> = {};
+    const combinedData: Record<string, { Date: string, Svc: string, Modals: Record<string, { Offer: number, Capacity: number, Utilized: number, UtilizedRoutes: number }> }> = {};
     fetchedReports.forEach(report => {
         const combinedKey = `${report.date}|${report.svc_id}`;
         if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: report.date, Svc: report.svc_id, Modals: {} };
         INITIAL_CATEGORIES.forEach(cat => {
             const modalName = cat.name.toUpperCase();
-            if (!combinedData[combinedKey].Modals[modalName]) combinedData[combinedKey].Modals[modalName] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
-            combinedData[combinedKey].Modals[modalName].Offer += (report[`offer_${cat.id.replace(/-/g, '_')}`] || 0);
+            if (!combinedData[combinedKey].Modals[modalName]) combinedData[combinedKey].Modals[modalName] = { Offer: 0, Capacity: 0, Utilized: 0, UtilizedRoutes: 0 };
+            const cleanId = cat.id.replace(/-/g, '_');
+            combinedData[combinedKey].Modals[modalName].Offer += (report[`offer_${cleanId}`] || 0);
+            combinedData[combinedKey].Modals[modalName].Capacity += (report[`capacity_${cleanId}`] || 0);
         });
     });
 
@@ -1245,16 +1247,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         const [date, svc, vehicleType] = key.split('|');
         const combinedKey = `${date}|${svc}`;
         if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: date, Svc: svc, Modals: {} };
-        if (!combinedData[combinedKey].Modals[vehicleType]) combinedData[combinedKey].Modals[vehicleType] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
+        if (!combinedData[combinedKey].Modals[vehicleType]) combinedData[combinedKey].Modals[vehicleType] = { Offer: 0, Capacity: 0, Utilized: 0, UtilizedRoutes: 0 };
         combinedData[combinedKey].Modals[vehicleType].Utilized += utilizationGroups[key].size;
         combinedData[combinedKey].Modals[vehicleType].UtilizedRoutes += utilizationCounts[key];
     });
 
-    const rows = [["Data", "SVC", "Modal", "Oferta", "Utilizado (Placas Únicas)", "Rotas Totais (Ida/Volta)"]];
+    const rows = [["Data", "SVC", "Modal", "Oferta", "Capacidade", "Utilizado (Placas Únicas)", "Rotas Totais (Ida/Volta)"]];
     Object.values(combinedData).forEach(entry => {
         Object.keys(entry.Modals).forEach(modalName => {
             const item = entry.Modals[modalName];
-            if (item.Offer > 0 || item.Utilized > 0 || item.UtilizedRoutes > 0) rows.push([entry.Date.split('-').reverse().join('/'), entry.Svc, modalName, item.Offer.toString(), item.Utilized.toString(), item.UtilizedRoutes.toString()]);
+            if (item.Offer > 0 || item.Capacity > 0 || item.Utilized > 0 || item.UtilizedRoutes > 0) rows.push([entry.Date.split('-').reverse().join('/'), entry.Svc, modalName, item.Offer.toString(), (item.Capacity || 0).toString(), item.Utilized.toString(), item.UtilizedRoutes.toString()]);
         });
     });
 
@@ -1275,12 +1277,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     const fetchedReports = await getReportsByDateRange(exportStartDate, exportEndDate);
     const fetchedRoutes = await getDailyRoutesByDateRange(exportStartDate, exportEndDate);
     
-    const consolidated: Record<string, { Offer: number, Utilized: number }> = {};
+    const consolidated: Record<string, { Offer: number, Capacity: number, Utilized: number }> = {};
     
     fetchedReports.forEach(r => {
         const key = `${r.date}|${r.svc_id}`;
-        if (!consolidated[key]) consolidated[key] = { Offer: 0, Utilized: 0 };
-        INITIAL_CATEGORIES.forEach(cat => consolidated[key].Offer += (r[`offer_${cat.id.replace(/-/g, '_')}`] || 0));
+        if (!consolidated[key]) consolidated[key] = { Offer: 0, Capacity: 0, Utilized: 0 };
+        INITIAL_CATEGORIES.forEach(cat => {
+            const cleanId = cat.id.replace(/-/g, '_');
+            consolidated[key].Offer += (r[`offer_${cleanId}`] || 0);
+            consolidated[key].Capacity += (r[`capacity_${cleanId}`] || 0);
+        });
     });
     
     const mapVehicleToCategory = (rawType: string): string => {
@@ -1302,14 +1308,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         routeTotals[key] = (routeTotals[key] || 0) + 1;
     });
     
-    const rows = [["Data", "SVC", "Oferta Total", "Utilizado Total (Placas Únicas)", "Rotas Totais (Ida/Volta)"]];
+    const rows = [["Data", "SVC", "Oferta Total", "Capacidade Total", "Utilizado Total (Placas Únicas)", "Rotas Totais (Ida/Volta)"]];
     
     Object.keys(routeCounts).forEach(key => {
-        if (!consolidated[key]) consolidated[key] = { Offer: 0, Utilized: 0 };
+        if (!consolidated[key]) consolidated[key] = { Offer: 0, Capacity: 0, Utilized: 0 };
     });
     Object.keys(consolidated).forEach(key => {
         const [date, svc] = key.split('|');
-        rows.push([date.split('-').reverse().join('/'), svc, consolidated[key].Offer.toString(), (routeCounts[key]?.size || 0).toString(), (routeTotals[key] || 0).toString()]);
+        rows.push([date.split('-').reverse().join('/'), svc, consolidated[key].Offer.toString(), (consolidated[key].Capacity || 0).toString(), (routeCounts[key]?.size || 0).toString(), (routeTotals[key] || 0).toString()]);
     });
     
     const csvContent = rows.map(r => r.join(";")).join("\n");
@@ -1388,15 +1394,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             utilizationCounts[key] = (utilizationCounts[key] || 0) + 1;
         });
 
-        const combinedData: Record<string, { Date: string, Svc: string, Modals: Record<string, { Offer: number, Utilized: number, UtilizedRoutes: number }> }> = {};
+        const combinedData: Record<string, { Date: string, Svc: string, Modals: Record<string, { Offer: number, Capacity: number, Utilized: number, UtilizedRoutes: number }> }> = {};
         fetchedReports.forEach(report => {
             if (!reportSvcFilter || report.svc_id === reportSvcFilter) {
               const combinedKey = `${report.date}|${report.svc_id}`;
               if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: report.date, Svc: report.svc_id, Modals: {} };
               INITIAL_CATEGORIES.forEach(cat => {
                   const modalName = cat.name.toUpperCase();
-                  if (!combinedData[combinedKey].Modals[modalName]) combinedData[combinedKey].Modals[modalName] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
-                  combinedData[combinedKey].Modals[modalName].Offer += (report[`offer_${cat.id.replace(/-/g, '_')}`] || 0);
+                  if (!combinedData[combinedKey].Modals[modalName]) combinedData[combinedKey].Modals[modalName] = { Offer: 0, Capacity: 0, Utilized: 0, UtilizedRoutes: 0 };
+                  const cleanId = cat.id.replace(/-/g, '_');
+                  combinedData[combinedKey].Modals[modalName].Offer += (report[`offer_${cleanId}`] || 0);
+                  combinedData[combinedKey].Modals[modalName].Capacity += (report[`capacity_${cleanId}`] || 0);
               });
             }
         });
@@ -1406,7 +1414,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             if (!reportSvcFilter || svc === reportSvcFilter) {
               const combinedKey = `${date}|${svc}`;
               if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: date, Svc: svc, Modals: {} };
-              if (!combinedData[combinedKey].Modals[vehicleType]) combinedData[combinedKey].Modals[vehicleType] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
+              if (!combinedData[combinedKey].Modals[vehicleType]) combinedData[combinedKey].Modals[vehicleType] = { Offer: 0, Capacity: 0, Utilized: 0, UtilizedRoutes: 0 };
               combinedData[combinedKey].Modals[vehicleType].Utilized += utilizationGroups[key].size;
               combinedData[combinedKey].Modals[vehicleType].UtilizedRoutes += utilizationCounts[key];
             }
@@ -1415,12 +1423,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         Object.values(combinedData).forEach(entry => {
             Object.keys(entry.Modals).forEach(modalName => {
                 const item = entry.Modals[modalName];
-                if (item.Offer > 0 || item.Utilized > 0 || item.UtilizedRoutes > 0) {
+                if (item.Offer > 0 || item.Capacity > 0 || item.Utilized > 0 || item.UtilizedRoutes > 0) {
                    results.push({
                       date: entry.Date,
                       svc: entry.Svc,
                       modal: modalName,
                       offer: item.Offer,
+                      capacity: item.Capacity,
                       utilized: item.Utilized,
                       utilizedRoutes: item.UtilizedRoutes
                    });
@@ -1468,7 +1477,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         ]);
       });
     } else if (reportType === 'spot') {
-      rows.push(["Data", "SVC", "Modal", "Oferta", "Utilizado (Placas)", "Rotas Totais", "Aproveitamento (%)"]);
+      rows.push(["Data", "SVC", "Modal", "Oferta", "Capacidade", "Utilizado (Placas)", "Rotas Totais", "Aproveitamento (%)"]);
       customReportResults.forEach(item => {
         const perc = item.offer > 0 ? ((item.utilized / item.offer) * 100).toFixed(1) : '0.0';
         rows.push([
@@ -1476,6 +1485,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           item.svc,
           item.modal,
           item.offer.toString(),
+          (item.capacity || 0).toString(),
           item.utilized.toString(),
           item.utilizedRoutes.toString(),
           `${perc}%`
@@ -1543,14 +1553,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         utilizationCounts[key] = (utilizationCounts[key] || 0) + 1;
     });
 
-    const combinedData: Record<string, { Date: string, Svc: string, Modals: Record<string, { Offer: number, Utilized: number, UtilizedRoutes: number }> }> = {};
+    const combinedData: Record<string, { Date: string, Svc: string, Modals: Record<string, { Offer: number, Capacity: number, Utilized: number, UtilizedRoutes: number }> }> = {};
     fetchedReports.forEach(report => {
         const combinedKey = `${report.date}|${report.svc_id}`;
         if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: report.date, Svc: report.svc_id, Modals: {} };
         INITIAL_CATEGORIES.forEach(cat => {
             const modalName = cat.name.toUpperCase();
-            if (!combinedData[combinedKey].Modals[modalName]) combinedData[combinedKey].Modals[modalName] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
-            combinedData[combinedKey].Modals[modalName].Offer += (report[`offer_${cat.id.replace(/-/g, '_')}`] || 0);
+            if (!combinedData[combinedKey].Modals[modalName]) combinedData[combinedKey].Modals[modalName] = { Offer: 0, Capacity: 0, Utilized: 0, UtilizedRoutes: 0 };
+            const cleanId = cat.id.replace(/-/g, '_');
+            combinedData[combinedKey].Modals[modalName].Offer += (report[`offer_${cleanId}`] || 0);
+            combinedData[combinedKey].Modals[modalName].Capacity += (report[`capacity_${cleanId}`] || 0);
         });
     });
 
@@ -1558,7 +1570,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         const [date, svc, vehicleType] = key.split('|');
         const combinedKey = `${date}|${svc}`;
         if (!combinedData[combinedKey]) combinedData[combinedKey] = { Date: date, Svc: svc, Modals: {} };
-        if (!combinedData[combinedKey].Modals[vehicleType]) combinedData[combinedKey].Modals[vehicleType] = { Offer: 0, Utilized: 0, UtilizedRoutes: 0 };
+        if (!combinedData[combinedKey].Modals[vehicleType]) combinedData[combinedKey].Modals[vehicleType] = { Offer: 0, Capacity: 0, Utilized: 0, UtilizedRoutes: 0 };
         combinedData[combinedKey].Modals[vehicleType].Utilized += utilizationGroups[key].size;
         combinedData[combinedKey].Modals[vehicleType].UtilizedRoutes += utilizationCounts[key];
     });
@@ -1567,12 +1579,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     Object.values(combinedData).forEach(entry => {
         Object.keys(entry.Modals).forEach(modalName => {
             const item = entry.Modals[modalName];
-            if (item.Offer > 0 || item.Utilized > 0 || item.UtilizedRoutes > 0) {
+            if (item.Offer > 0 || item.Capacity > 0 || item.Utilized > 0 || item.UtilizedRoutes > 0) {
                finalDirData.push({
                   date: entry.Date,
                   svc: entry.Svc,
                   modal: modalName,
                   offer: item.Offer,
+                  capacity: item.Capacity,
                   utilized: item.Utilized,
                   utilizedRoutes: item.UtilizedRoutes
                });
@@ -1584,14 +1597,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     const grouped: Record<string, any> = {};
     finalDirData.forEach(item => {
        const key = `${item.date}|${item.svc}`;
-       if (!grouped[key]) grouped[key] = { date: item.date, svc: item.svc, modal: 'CONSOLIDADO', offer: 0, utilized: 0, utilizedRoutes: 0 };
+       if (!grouped[key]) grouped[key] = { date: item.date, svc: item.svc, modal: 'CONSOLIDADO', offer: 0, capacity: 0, utilized: 0, utilizedRoutes: 0 };
        grouped[key].offer += item.offer;
+       grouped[key].capacity += item.capacity;
        grouped[key].utilized += item.utilized;
        grouped[key].utilizedRoutes += item.utilizedRoutes;
     });
     const displayData = Object.values(grouped).sort((a,b) => a.svc.localeCompare(b.svc));
 
-    const rows = [["Data", "Polo/SVC", "Modal", "Oferta", "Utilizado (Placas)", "Rotas Totais", "Performance/Aprov."]];
+    const rows = [["Data", "Polo/SVC", "Modal", "Oferta", "Capacidade", "Utilizado (Placas)", "Rotas Totais", "Performance/Aprov."]];
     displayData.forEach(item => {
         const itemPerc = item.offer > 0 ? ((item.utilized / item.offer) * 100).toFixed(0) : '0';
         rows.push([
@@ -1599,6 +1613,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             item.svc,
             item.modal,
             item.offer.toString(),
+            (item.capacity || 0).toString(),
             item.utilized.toString(),
             item.utilizedRoutes.toString(),
             `${itemPerc}%`
@@ -5023,6 +5038,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                             <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('svc')}>SVC</th>
                             <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('modal')}>Modal</th>
                             <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('offer')}>Oferta</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('capacity')}>Capacidade</th>
                             <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('utilized')}>Utilizado</th>
                             <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('utilizedRoutes')}>Rotas Totais</th>
                             <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('performance')}>Aproveitamento</th>
@@ -5080,6 +5096,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                 <>
                                   <td className="px-5 py-3.5 font-semibold text-slate-500 dark:text-slate-400">{item.modal}</td>
                                   <td className="px-5 py-3.5 font-bold text-center">{item.offer}</td>
+                                  <td className="px-5 py-3.5 font-bold text-center text-fuchsia-600 dark:text-fuchsia-400">{item.capacity || 0}</td>
                                   <td className="px-5 py-3.5 font-bold text-center text-indigo-600 dark:text-indigo-400">{item.utilized}</td>
                                   <td className="px-5 py-3.5 font-bold text-center text-amber-600 dark:text-amber-400">{item.utilizedRoutes}</td>
                                   <td className="px-5 py-3.5 text-center">
