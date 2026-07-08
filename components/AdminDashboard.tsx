@@ -1348,7 +1348,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 fleetType: driver.fleetType || '',
                 plate: driver.plate || '',
                 modal: driver.modal || '',
-                reason: driver.reason || ''
+                reason: driver.reason || '',
+                fuelCard: driver.fuelCard || 'Não'
               });
             }
           });
@@ -1454,7 +1455,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     let filename = `Relatorio_${reportType}_${reportStartDate}_a_${reportEndDate}.csv`;
 
     if (reportType === 'drivers') {
-      rows.push(["Data", "SVC", "Nome do Motorista", "Tipo de Frota", "Placa", "Modal", "Motivo da Perda"]);
+      rows.push(["Data", "SVC", "Nome do Motorista", "Tipo de Frota", "Placa", "Modal", "Motivo da Perda", "Cartão Combustível"]);
       customReportResults.forEach(item => {
         rows.push([
           item.date.split('-').reverse().join('/'),
@@ -1463,7 +1464,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           item.fleetType,
           item.plate || 'N/A',
           item.modal,
-          item.reason
+          item.reason,
+          item.fuelCard || 'Não'
         ]);
       });
     } else if (reportType === 'justifications') {
@@ -5020,6 +5022,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                             <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('name')}>Motorista</th>
                             <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('fleetType')}>Frota</th>
                             <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('plate')}>Placa</th>
+                            <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('fuelCard')}>Cartão Combustível</th>
                             <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('modal')}>Modal</th>
                             <th className="px-5 py-4 cursor-pointer" onClick={() => handleReportSort('reason')}>Motivo da Perda</th>
                           </tr>
@@ -5080,6 +5083,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                   <td className="px-5 py-3.5 font-bold text-slate-700 dark:text-slate-350">{item.name}</td>
                                   <td className="px-5 py-3.5"><span className="text-xs font-bold px-2 py-1 rounded bg-slate-100 dark:bg-slate-800">{item.fleetType}</span></td>
                                   <td className="px-5 py-3.5 font-mono font-bold">{item.plate || '-'}</td>
+                                  <td className="px-5 py-3.5 text-xs font-semibold text-slate-500 dark:text-slate-400">{item.fuelCard || 'Não'}</td>
                                   <td className="px-5 py-3.5 text-xs text-slate-500 dark:text-slate-400 font-semibold">{item.modal}</td>
                                   <td className="px-5 py-3.5 text-slate-600 dark:text-slate-400 italic">"{item.reason}"</td>
                                 </>

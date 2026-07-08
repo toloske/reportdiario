@@ -35,6 +35,7 @@ const Step3: React.FC<Step3Props> = ({ data, updateData, onBack, onSubmit, isSav
   const [fleetType, setFleetType] = useState<'SPOT' | 'FROTA FIXA' | 'FROTA PRÓPRIA'>('SPOT');
   const [plate, setPlate] = useState('');
   const [reason, setReason] = useState('');
+  const [fuelCard, setFuelCard] = useState<'Sim' | 'Não'>('Não');
 
   // Filter plates of this SVC based on the selected fleet type
   const availablePlates = data.vehicleStatuses.filter(v => {
@@ -92,7 +93,8 @@ const Step3: React.FC<Step3Props> = ({ data, updateData, onBack, onSubmit, isSav
       modal,
       fleetType,
       plate: plate.trim().toUpperCase() || undefined,
-      reason: reason.trim()
+      reason: reason.trim(),
+      fuelCard
     };
 
     updateData({
@@ -104,6 +106,7 @@ const Step3: React.FC<Step3Props> = ({ data, updateData, onBack, onSubmit, isSav
     setModal('');
     setPlate('');
     setReason('');
+    setFuelCard('Não');
   };
 
   const handleRemoveDriver = (id: string) => {
@@ -244,7 +247,10 @@ const Step3: React.FC<Step3Props> = ({ data, updateData, onBack, onSubmit, isSav
                       className="w-full h-11 px-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all dark:text-white uppercase"
                       placeholder="Ex: ABC1D23 ou ABC1234"
                       value={plate}
-                      onChange={(e) => setPlate(e.target.value)}
+                      onChange={(e) => {
+                        const cleaned = e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 7).toUpperCase();
+                        setPlate(cleaned);
+                      }}
                     />
                   </div>
                 ) : (
@@ -267,14 +273,35 @@ const Step3: React.FC<Step3Props> = ({ data, updateData, onBack, onSubmit, isSav
 
                 {/* 4. Nome do Motorista */}
                 <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Nome do Motorista</label>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Nome Completo do Motorista</label>
                   <input
                     type="text"
                     className="w-full h-11 px-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all dark:text-white"
-                    placeholder="Nome do motorista"
+                    placeholder="Nome completo do motorista"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                   />
+                </div>
+
+                {/* Cartão Combustível */}
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Possui Cartão Combustível / Ticket Log?</label>
+                  <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-lg w-full">
+                    <button
+                      type="button"
+                      onClick={() => setFuelCard('Sim')}
+                      className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${fuelCard === 'Sim' ? 'bg-primary text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                    >
+                      Sim
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFuelCard('Não')}
+                      className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${fuelCard === 'Não' ? 'bg-primary text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                    >
+                      Não
+                    </button>
+                  </div>
                 </div>
 
                 {/* 5. Motivo da Perda */}
@@ -335,6 +362,12 @@ const Step3: React.FC<Step3Props> = ({ data, updateData, onBack, onSubmit, isSav
                       </p>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                         <strong className="text-slate-700 dark:text-slate-300">Frota:</strong> {d.fleetType} {d.plate && `(${d.plate})`}
+                        {d.fuelCard && (
+                          <>
+                            <span className="mx-2">|</span>
+                            <strong className="text-slate-700 dark:text-slate-300">Cartão Combustível:</strong> {d.fuelCard}
+                          </>
+                        )}
                       </p>
                       <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 bg-slate-50 dark:bg-slate-800 p-2 rounded italic">
                         "{d.reason}"

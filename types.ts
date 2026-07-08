@@ -36,6 +36,7 @@ export interface LostDriver {
   fleetType: 'SPOT' | 'FROTA FIXA' | 'FROTA PRÓPRIA';
   plate?: string;
   reason: string;
+  fuelCard?: 'Sim' | 'Não';
 }
 
 export interface FormData {
