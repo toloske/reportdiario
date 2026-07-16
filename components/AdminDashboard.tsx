@@ -80,6 +80,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [importSuccessDoubleCheck, setImportSuccessDoubleCheck] = useState(false);
   const [doubleCheckError, setDoubleCheckError] = useState<string | null>(null);
   const [doubleCheckHeadersDetected, setDoubleCheckHeadersDetected] = useState<string[]>([]);
+  const [doubleCheckWarning, setDoubleCheckWarning] = useState<string | null>(null);
 
   // States for Audit Query
   const [auditQueryDate, setAuditQueryDate] = useState<string>(getLocalDateString());
@@ -2043,12 +2044,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     if (!file) return;
     setCsvFileDoubleCheck(file);
     setImportSuccessDoubleCheck(false);
+    setDoubleCheckWarning(null);
   };
 
   const handleImportRoutesDoubleCheck = async () => {
     if (!csvFileDoubleCheck) return;
     setImportLoadingDoubleCheck(true);
     setDoubleCheckError(null);
+    setDoubleCheckWarning(null);
     setDoubleCheckHeadersDetected([]);
     Papa.parse(csvFileDoubleCheck, {
       header: true,
@@ -2151,26 +2154,70 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         if (payloadToInsert.length > 0) {
           const uniqueDates = Array.from(new Set(payloadToInsert.map(p => p.date)));
           
+          const validDates: string[] = [];
+          const skippedNoReports: string[] = [];
+          const skippedNoMainRoutes: string[] = [];
+
           for (const date of uniqueDates) {
               const reportsForDate = await getReportsByDate(date);
               if (!reportsForDate || reportsForDate.length === 0) {
-                  setDoubleCheckError(`Ação bloqueada: Os formulários (justificativas) do dia ${date} ainda não estão no sistema. Aguarde o envio do forms antes de subir a correção de anomalias.`);
-                  setImportLoadingDoubleCheck(false);
-                  return;
+                  skippedNoReports.push(date);
+                  continue;
               }
 
               const routesForDate = await getDailyRoutesByDate(date);
               const mainRoutes = routesForDate.filter((r: any) => !r.route_id.startsWith('DBLCHK'));
               if (mainRoutes.length === 0) {
-                  setDoubleCheckError(`Ação bloqueada: Você precisa importar a planilha principal de Rotas do dia ${date} ANTES de subir a correção (Double Check) para evitar duplicidade de placas.`);
-                  setImportLoadingDoubleCheck(false);
-                  return;
+                  skippedNoMainRoutes.push(date);
+                  continue;
               }
+
+              validDates.push(date);
           }
 
-          await saveDailyRoutes(payloadToInsert);
-          setImportSuccessDoubleCheck(true);
-          setDoubleCheckError(null);
+          const finalPayload = payloadToInsert.filter(p => validDates.includes(p.date));
+
+          if (finalPayload.length > 0) {
+              await saveDailyRoutes(finalPayload);
+              setImportSuccessDoubleCheck(true);
+              setDoubleCheckError(null);
+
+              if (skippedNoReports.length > 0 || skippedNoMainRoutes.length > 0) {
+                  let warningMsg = `Alguns dias foram ignorados e não foram importados:`;
+                  if (skippedNoReports.length > 0) {
+                      warningMsg += `\n- Sem formulários (justificativas) no sistema: ${skippedNoReports.map(d => {
+                          const parts = d.split('-');
+                          return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                      }).join(', ')}`;
+                  }
+                  if (skippedNoMainRoutes.length > 0) {
+                      warningMsg += `\n- Sem planilha principal de rotas importada: ${skippedNoMainRoutes.map(d => {
+                          const parts = d.split('-');
+                          return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                      }).join(', ')}`;
+                  }
+                  setDoubleCheckWarning(warningMsg);
+              } else {
+                  setDoubleCheckWarning(null);
+              }
+          } else {
+              let errorMsg = `Ação bloqueada: Nenhuma linha foi importada.`;
+              if (skippedNoReports.length > 0) {
+                  errorMsg += `\n\nVocê precisa aguardar o envio do forms para os dias: ${skippedNoReports.map(d => {
+                      const parts = d.split('-');
+                      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                  }).join(', ')}`;
+              }
+              if (skippedNoMainRoutes.length > 0) {
+                  errorMsg += `\n\nVocê precisa importar a planilha principal de Rotas para os dias: ${skippedNoMainRoutes.map(d => {
+                      const parts = d.split('-');
+                      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                  }).join(', ')} antes de subir o Double Check.`;
+              }
+              setDoubleCheckError(errorMsg);
+              setImportSuccessDoubleCheck(false);
+              setDoubleCheckWarning(null);
+          }
         } else {
           // Debug: pega os valores brutos da primeira linha para diagnóstico
           const firstRow = results.data[0] as any;
@@ -2613,6 +2660,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                      Cole abaixo os nomes exatos das colunas detectadas e ajuste o CSV caso necessário.
                    </p>
                  )}
+               </div>
+            )}
+            {doubleCheckWarning && (
+               <div className="p-4 bg-orange-50 dark:bg-orange-900/10 text-orange-700 dark:text-orange-400 rounded-xl border border-orange-100 dark:border-orange-800/30 text-sm font-medium shadow-sm space-y-2">
+                 <div className="flex items-center gap-2.5">
+                   <span className="material-symbols-outlined text-orange-500">warning</span>
+                   <span className="font-bold">Aviso sobre importação</span>
+                 </div>
+                 <pre className="whitespace-pre-wrap text-xs text-orange-600 dark:text-orange-400">{doubleCheckWarning}</pre>
                </div>
             )}
 
