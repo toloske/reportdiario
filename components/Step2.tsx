@@ -88,15 +88,6 @@ const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSav
                         <div className="flex justify-between items-center mb-1">
                           <div>
                             <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{vehicle.plate}</p>
-                            {vehicle.previousJustification && (
-                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1">
-                                <span className="material-symbols-outlined text-[12px] opacity-70">history</span>
-                                <span className="font-bold text-slate-500 dark:text-slate-400">Ontem:</span> 
-                                <span className={vehicle.previousJustification === 'RODOU' ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-amber-600 dark:text-amber-400 font-semibold'}>
-                                  {vehicle.previousJustification}
-                                </span>
-                              </p>
-                            )}
                           </div>
                           <div className="text-right flex items-center gap-3">
                             <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider hidden sm:block">Rodou?</span>

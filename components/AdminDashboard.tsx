@@ -27,6 +27,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     return `${year}-${month}-${day}`;
   };
 
+  const getPreviousDayDateStr = (dateStr: string): string => {
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const d = new Date(year, month, day);
+    d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
   const [selectedDate, setSelectedDate] = useState<string>(getLocalDateString());
   const [reports, setReports] = useState<any[]>([]);
   const [svcs, setSvcs] = useState<SVC[]>([]);
@@ -380,7 +391,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       if (activeTab === 'utilization' && svcs.length > 0) {
         setLoading(true);
         const [fetchedReports, fetchedRoutes] = await Promise.all([
-          getReportsByDateRange(startDate, endDate),
+          getReportsByDateRange(getPreviousDayDateStr(startDate), endDate),
           getDailyRoutesByDateRange(startDate, endDate)
         ]);
         
@@ -627,6 +638,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                         reason = 'Sem justificativa preenchida';
                     }
 
+                    const prevDate = getPreviousDayDateStr(date);
+                    const prevCacheEntry = reportCache[`${prevDate}|${plate}`];
+                    let previousJustification = '';
+                    if (prevCacheEntry) {
+                        previousJustification = prevCacheEntry.reason || 'Sem justificativa preenchida';
+                    } else {
+                        const prevDidRun = routesByDateAndPlate[`${prevDate}|${plate}`] || false;
+                        previousJustification = prevDidRun ? 'RODOU (Identificado via Rota)' : 'Sem registro anterior';
+                    }
+
                     detailedData.push({
                         date,
                         svc,
@@ -637,7 +658,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                         fullJustifications,
                         supervisorStatus,
                         fullSupervisorStatuses,
-                        fleetType
+                        fleetType,
+                        previousJustification
                     });
                 });
             }
@@ -4346,9 +4368,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
              };
              
              const handleExportDetailedPlate = () => {
-                const rows = [["Data", "SVC", "Placa", "Frota", "Carregou (1=Sim/0=Nao)", "Justificativa", "Validação Supervisor"]];
+                const rows = [["Data", "SVC", "Placa", "Frota", "Carregou (1=Sim/0=Nao)", "Justificativa Ontem", "Justificativa", "Validação Supervisor"]];
                 finalDisplayedDetails.forEach(d => {
-                   rows.push([d.date.split('-').reverse().join('/'), d.svc, d.plate, d.fleetType, d.didRun ? '1' : '0', d.reason, d.supervisorStatus ? 'Validado' : 'Não Validado']);
+                   rows.push([d.date.split('-').reverse().join('/'), d.svc, d.plate, d.fleetType, d.didRun ? '1' : '0', d.previousJustification || 'Sem registro', d.reason, d.supervisorStatus ? 'Validado' : 'Não Validado']);
                 });
                 const csvContent = rows.map(r => r.join(";")).join("\n");
                 const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -4673,22 +4695,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                    <table className="w-full text-sm text-left relative">
                      <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0 z-10 shadow-sm select-none">
                        <tr>
-                         <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('date')}>
+                         <th className="px-5 py-4 w-1/7 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('date')}>
                            <div className="flex items-center gap-1">Data {detSortConfig?.key === 'date' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
                          </th>
-                         <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('svc')}>
+                         <th className="px-5 py-4 w-1/7 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('svc')}>
                            <div className="flex items-center gap-1">SVC {detSortConfig?.key === 'svc' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
                          </th>
-                         <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('plate')}>
+                         <th className="px-5 py-4 w-1/7 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('plate')}>
                            <div className="flex items-center gap-1">Placa {detSortConfig?.key === 'plate' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
                          </th>
-                         <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('fleetType')}>
+                         <th className="px-5 py-4 w-1/7 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('fleetType')}>
                            <div className="flex items-center gap-1">Frota {detSortConfig?.key === 'fleetType' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
                          </th>
-                         <th className="px-5 py-4 w-1/6 text-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('didRun')}>
+                         <th className="px-5 py-4 w-1/7 text-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('didRun')}>
                            <div className="flex items-center justify-center gap-1">Status (Carregou) {detSortConfig?.key === 'didRun' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
                          </th>
-                         <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('reason')}>
+                         <th className="px-5 py-4 w-1/7 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('previousJustification')}>
+                           <div className="flex items-center gap-1">Ontem {detSortConfig?.key === 'previousJustification' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                         </th>
+                         <th className="px-5 py-4 w-1/7 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('reason')}>
                            <div className="flex items-center gap-1">Justificativa Reportada {detSortConfig?.key === 'reason' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
                          </th>
                        </tr>
@@ -4696,7 +4721,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                         {finalDisplayedDetails.length === 0 ? (
                            <tr>
-                              <td colSpan={5} className="px-5 py-12 text-center text-slate-400 font-medium dark:text-slate-400">Nenhum registro encontrado para os filtros aplicados.</td>
+                              <td colSpan={7} className="px-5 py-12 text-center text-slate-400 font-medium dark:text-slate-400">Nenhum registro encontrado para os filtros aplicados.</td>
                            </tr>
                         ) : (
                            finalDisplayedDetails.map((item, idx) => (
@@ -4726,6 +4751,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                             <span className="material-symbols-outlined text-[14px]">cancel</span> Não (0)
                                         </span>
                                      )}
+                                 </td>
+                                 <td className="px-5 py-3.5">
+                                    <span className={`text-xs font-semibold ${item.previousJustification === 'RODOU' || item.previousJustification?.startsWith('RODOU') ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-500'}`}>
+                                       {item.previousJustification || 'Sem registro'}
+                                    </span>
                                  </td>
                                  <td className="px-5 py-3.5">
                                     {editingPlateKey === `${item.date}|${item.plate}` ? (
