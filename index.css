@@ -23,6 +23,11 @@
     min-height: 100vh;
   }
   
+  html.dark body {
+    @apply bg-slate-950 text-slate-100;
+    background-image: linear-gradient(to bottom, #0b1329, #080c14);
+  }
+  
   h1, h2, h3, h4, h5, h6 {
     @apply font-display;
   }

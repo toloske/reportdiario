@@ -34,10 +34,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [loading, setLoading] = useState(false);
   const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
 
-  const handleSendWhatsapp = async (message: string) => {
+  const handleSendWhatsapp = async (message: string, recipient?: string) => {
     setSendingWhatsapp(true);
     try {
-      await whatsappService.sendText(message);
+      await whatsappService.sendText(message, recipient);
       alert("Cobrança enviada com sucesso via WhatsApp!");
     } catch (error: any) {
       alert("Falha ao enviar cobrança via WhatsApp: " + error.message);
@@ -46,7 +46,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     }
   };
   
-  const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'|'export'|'director'|'summary'|'efficiency'|'reports'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'|'director'|'summary'|'efficiency'|'reports'>('daily');
   const [startDate, setStartDate] = useState<string>(
     getLocalDateString(new Date(new Date().setDate(new Date().getDate() - 7)))
   );
@@ -81,6 +81,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [doubleCheckError, setDoubleCheckError] = useState<string | null>(null);
   const [doubleCheckHeadersDetected, setDoubleCheckHeadersDetected] = useState<string[]>([]);
   const [doubleCheckWarning, setDoubleCheckWarning] = useState<string | null>(null);
+
+  // States for Layout & Sidebar
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [reportsSubTab, setReportsSubTab] = useState<'custom' | 'downloads'>('custom');
+  const [missingRecipient, setMissingRecipient] = useState<string>('');
+  const [customMissingRecipient, setCustomMissingRecipient] = useState<string>('');
+  const [errorsRecipient, setErrorsRecipient] = useState<string>('5515996813326');
+  const [customErrorsRecipient, setCustomErrorsRecipient] = useState<string>('');
 
   // States for Audit Query
   const [auditQueryDate, setAuditQueryDate] = useState<string>(getLocalDateString());
@@ -178,6 +186,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       handleGenerateCustomReport();
     }
   }, [activeTab]);
+
+  const handleTabChange = (tab: any) => {
+    setActiveTab(tab);
+    setIsMobileMenuOpen(false);
+  };
 
   const confirmSendEmail = async () => {
     if (!emailPreviewData) return;
@@ -2282,60 +2295,145 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-8 space-y-6 font-sans">
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-900 px-6 py-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-        <h2 className="text-xl font-extrabold text-primary flex items-center gap-2">
-           Painel Master
-        </h2>
-        <div className="flex items-center gap-3">
-          <button 
-             onClick={() => setActiveTab('audit' as any)}
-             className={`px-4 py-2 font-bold text-xs tracking-wide rounded-xl transition-all flex items-center gap-1.5
-                ${activeTab === 'audit' ? 'bg-indigo-600 text-white shadow-md' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50'}`}
-          >
-             <span className="material-symbols-outlined text-[16px]">upload_file</span>
-             Subir Rotas
-          </button>
-          <button 
-             onClick={() => setActiveTab('export' as any)}
-             className={`px-4 py-2 font-bold text-xs tracking-wide rounded-xl transition-all flex items-center gap-1.5
-                ${activeTab === 'export' ? 'bg-amber-600 text-white shadow-md' : 'bg-amber-50 text-amber-600 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50'}`}
-          >
-             <span className="material-symbols-outlined text-[16px]">download</span>
-             Exportar
-          </button>
-          <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
+      {/* Sidebar Navigation */}
+      <aside className={`w-64 bg-[#002147] text-slate-100 flex flex-col justify-between fixed h-full z-30 transition-transform duration-300 md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex flex-col h-full">
+          {/* Logo Section */}
+          <div className="p-6 pb-0">
+            <div className="flex items-center gap-3 border-b border-white/10 pb-6 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+                <span className="material-symbols-outlined text-white text-[24px]">analytics</span>
+              </div>
+              <div>
+                <h2 className="text-lg font-black tracking-wider text-white">Transmaná</h2>
+                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Painel Master</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Navigation Links (Scrollable middle container) */}
+          <nav className="flex-1 overflow-y-auto px-6 py-2 space-y-6 min-h-0">
+            {/* Category: OPERACIONAL */}
+            <div>
+              <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">Operacional</p>
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => handleTabChange('daily')}
+                  className={`w-full px-4 py-3 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center gap-3 ${activeTab === 'daily' ? 'bg-white/10 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">calendar_today</span>
+                  DIÁRIO
+                </button>
+                <button
+                  onClick={() => handleTabChange('summary')}
+                  className={`w-full px-4 py-3 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center gap-3 ${activeTab === 'summary' ? 'bg-white/10 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">analytics</span>
+                  RESUMO DIÁRIO
+                </button>
+              </div>
+            </div>
+
+            {/* Category: DASHBOARDS & ANÁLISES */}
+            <div>
+              <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">Dashboards & Análises</p>
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => handleTabChange('utilization')}
+                  className={`w-full px-4 py-3 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center gap-3 ${activeTab === 'utilization' ? 'bg-white/10 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">pie_chart</span>
+                  UTILIZAÇÃO
+                </button>
+                <button
+                  onClick={() => handleTabChange('director')}
+                  className={`w-full px-4 py-3 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center gap-3 ${activeTab === 'director' ? 'bg-white/10 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">dashboard</span>
+                  OFERTAS SPOT
+                </button>
+                <button
+                  onClick={() => handleTabChange('efficiency')}
+                  className={`w-full px-4 py-3 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center gap-3 ${activeTab === 'efficiency' ? 'bg-white/10 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">speed</span>
+                  EFICIÊNCIA DE FROTA
+                </button>
+              </div>
+            </div>
+
+            {/* Category: AÇÕES & DADOS */}
+            <div>
+              <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">Ações & Dados</p>
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => handleTabChange('audit')}
+                  className={`w-full px-4 py-3 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center gap-3 ${activeTab === 'audit' ? 'bg-white/10 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">upload_file</span>
+                  IMPORTAR PLANILHAS
+                </button>
+                <button
+                  onClick={() => handleTabChange('reports')}
+                  className={`w-full px-4 py-3 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center gap-3 ${activeTab === 'reports' ? 'bg-white/10 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">description</span>
+                  CENTRAL DE RELATÓRIOS
+                </button>
+              </div>
+            </div>
+          </nav>
+
+          {/* Footer Section */}
+          <div className="p-6 border-t border-white/10 mt-auto bg-[#002147]">
+            <button
+              onClick={onBack}
+              className="w-full px-4 py-3.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+            >
+              <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+              VOLTAR AO INÍCIO
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* Mobile Menu Backdrop */}
+      {isMobileMenuOpen && (
+        <div 
+          onClick={() => setIsMobileMenuOpen(false)}
+          className="fixed inset-0 bg-black/40 z-20 md:hidden backdrop-blur-sm"
+        />
+      )}
+
+      {/* Main Content Area */}
+      <div className="flex-1 md:ml-64 flex flex-col min-h-screen min-w-0">
+        {/* Header Bar */}
+        <header className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-10 px-6 py-4 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="p-2 -ml-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl md:hidden transition-colors dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <span className="material-symbols-outlined text-[24px]">menu</span>
+            </button>
+            <h1 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
+              {activeTab === 'daily' && <><span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-[20px]">calendar_today</span> Diário</>}
+              {activeTab === 'summary' && <><span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-[20px]">analytics</span> Resumo Diário</>}
+              {activeTab === 'utilization' && <><span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-[20px]">pie_chart</span> Utilização de Frota</>}
+              {activeTab === 'director' && <><span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-[20px]">dashboard</span> Ofertas SPOT</>}
+              {activeTab === 'efficiency' && <><span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-[20px]">speed</span> Eficiência de Frota</>}
+              {activeTab === 'audit' && <><span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-[20px]">upload_file</span> Importar Planilhas</>}
+              {activeTab === 'reports' && <><span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-[20px]">description</span> Central de Relatórios</>}
+            </h1>
+          </div>
           <button onClick={onBack} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full dark:bg-slate-800 transition-colors">
             <span className="material-symbols-outlined text-[18px]">close</span>
           </button>
-        </div>
-      </div>
+        </header>
 
-      <div className="flex justify-center gap-2 bg-white dark:bg-slate-900 p-2.5 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200/60 dark:border-slate-800/80 overflow-x-auto">
-        {[
-           { id: 'daily', label: 'Diário' },
-           { id: 'utilization', label: 'Utilização' },
-           { id: 'director', label: 'Ofertas SPOT' },
-           { id: 'summary', label: 'Resumo Diário' },
-           { id: 'efficiency', label: 'Eficiência de Frota' },
-           { id: 'reports', label: 'Relatórios' }
-        ].map((tab) => (
-          <button 
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
-            className={`px-6 py-3 font-bold text-sm tracking-wide rounded-xl transition-all duration-300 whitespace-nowrap flex items-center gap-2
-              ${activeTab === tab.id ? 'bg-primary text-white shadow-md scale-[1.02]' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/80 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800'}`}
-          >
-            {tab.id === 'daily' && <span className="material-symbols-outlined text-[18px]">calendar_today</span>}
-            {tab.id === 'utilization' && <span className="material-symbols-outlined text-[18px]">pie_chart</span>}
-            {tab.id === 'director' && <span className="material-symbols-outlined text-[18px]">dashboard</span>}
-            {tab.id === 'summary' && <span className="material-symbols-outlined text-[18px]">analytics</span>}
-            {tab.id === 'efficiency' && <span className="material-symbols-outlined text-[18px]">speed</span>}
-            {tab.id === 'reports' && <span className="material-symbols-outlined text-[18px]">description</span>}
-            {tab.label.toUpperCase()}
-          </button>
-        ))}
-      </div>
+        {/* Content body wrapper */}
+        <div className="p-4 md:p-8 space-y-6 flex-1 max-w-7xl w-full mx-auto">
 
       {activeTab === 'daily' && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] border border-slate-200/60 dark:border-slate-800/80 space-y-5">
@@ -2728,51 +2826,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         </div>
       )}
 
-      {activeTab === 'export' && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] border border-slate-200/60 dark:border-slate-800/80 space-y-6">
-          <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-              <span className="material-symbols-outlined text-primary">download</span>
-            </div>
-            <div>
-              <h3 className="font-black text-lg text-slate-800 dark:text-slate-100">Exportar Dados (Período)</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Exporte históricos de frota, oferta e capacidade em CSV aplicando filtros de data.</p>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Data Inicial</label>
-              <input type="date" value={exportStartDate} onChange={e => setExportStartDate(e.target.value)} max={getLocalDateString()} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Data Final</label>
-              <input type="date" value={exportEndDate} onChange={e => setExportEndDate(e.target.value)} max={getLocalDateString()} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200" />
-            </div>
-          </div>
-
-          <div className="flex flex-col md:flex-row gap-4 mt-6">
-             <button onClick={() => handleExportRangeAction('fleet')} disabled={exportLoading} className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-900 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold rounded-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all shadow-md disabled:opacity-50">
-               {exportLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined text-[18px]">list_alt</span>}
-               Exportar Frota
-             </button>
-             <button onClick={() => handleExportRangeAction('offer')} disabled={exportLoading} className="flex-1 py-3.5 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all shadow-lg shadow-primary/30 disabled:opacity-50">
-               {exportLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined text-[18px]">local_shipping</span>}
-               Exportar Oferta/Cap.
-             </button>
-          </div>
-          <div className="flex flex-col md:flex-row gap-4">
-             <button onClick={handleExportOfferVsUtilization} disabled={exportLoading} className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all shadow-lg shadow-blue-600/30 disabled:opacity-50">
-               {exportLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined text-[18px]">list_alt</span>}
-               Cruzamento Específico (SVC e Modal)
-             </button>
-             <button onClick={handleExportOfferVsUtilizationConsolidado} disabled={exportLoading} className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all shadow-lg shadow-indigo-600/30 disabled:opacity-50">
-               {exportLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined text-[18px]">functions</span>}
-               Cruzamento Consolidado (Total por SVC)
-             </button>
-          </div>
-        </div>
-      )}
 
       {activeTab === 'director' && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl p-6 md:p-10 animate-fade-in w-full overflow-hidden">
@@ -3829,26 +3883,49 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               </h3>
               
               {missingSvcs.length > 0 && (
-                <button
-                  disabled={sendingWhatsapp}
-                  onClick={() => {
-                     const svcsStr = missingSvcs.map(s => s.name).join('\n');
-                     const dataFormatada = selectedDate.split('-').reverse().join('/');
-                     const mensagem = `Faltam responder o forms dia ${dataFormatada}\n\nSVCS:\n${svcsStr}`;
-                     handleSendWhatsapp(mensagem);
-                  }}
-                  className={`px-4 py-2 text-white text-xs font-bold rounded-xl flex items-center gap-2 active:scale-95 transition-all shadow-md ${sendingWhatsapp ? 'bg-slate-400 cursor-not-allowed shadow-none' : 'bg-[#25D366] hover:bg-[#1DA851] shadow-green-500/20'}`}
-                >
-                  {sendingWhatsapp ? (
-                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-                  ) : (
-                    <img 
-                        src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='white'%3E%3Cpath d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z'/%3E%3C/svg%3E" 
-                        alt="WhatsApp" 
+                <div className="flex flex-wrap items-center gap-3">
+                  <select
+                    value={missingRecipient}
+                    onChange={(e) => setMissingRecipient(e.target.value)}
+                    className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-primary/20 shadow-sm"
+                  >
+                    <option value="">Grupo Geral (Padrão)</option>
+                    <option value="5515996813326">Grupo de Erros (5515996813326)</option>
+                    <option value="custom">Outro Número / Grupo...</option>
+                  </select>
+                  
+                  {missingRecipient === 'custom' && (
+                    <input
+                      type="text"
+                      placeholder="Número ou ID de grupo..."
+                      value={customMissingRecipient}
+                      onChange={(e) => setCustomMissingRecipient(e.target.value)}
+                      className="px-3 py-2 text-xs font-medium rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-primary/20 shadow-sm w-44"
                     />
                   )}
-                  {sendingWhatsapp ? 'Enviando cobrança...' : 'Cobrar Faltantes no WhatsApp'}
-                </button>
+
+                  <button
+                    disabled={sendingWhatsapp}
+                    onClick={() => {
+                       const svcsStr = missingSvcs.map(s => s.name).join('\n');
+                       const dataFormatada = selectedDate.split('-').reverse().join('/');
+                       const mensagem = `Faltam responder o forms dia ${dataFormatada}\n\nSVCS:\n${svcsStr}`;
+                       const target = missingRecipient === 'custom' ? customMissingRecipient : missingRecipient;
+                       handleSendWhatsapp(mensagem, target);
+                    }}
+                    className={`px-4 py-2 text-white text-xs font-bold rounded-xl flex items-center gap-2 active:scale-95 transition-all shadow-md ${sendingWhatsapp ? 'bg-slate-400 cursor-not-allowed shadow-none' : 'bg-[#25D366] hover:bg-[#1DA851] shadow-green-500/20'}`}
+                  >
+                    {sendingWhatsapp ? (
+                      <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                    ) : (
+                      <img 
+                          src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='white'%3E%3Cpath d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z'/%3E%3C/svg%3E" 
+                          alt="WhatsApp" 
+                      />
+                    )}
+                    {sendingWhatsapp ? 'Enviando cobrança...' : 'Cobrar Faltantes no WhatsApp'}
+                  </button>
+                </div>
               )}
             </div>
 
@@ -4418,24 +4495,47 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                 <span className="material-symbols-outlined text-[18px] text-red-500">error</span>
                                 Erros de Preenchimento ({visibleErrors.length} placa{visibleErrors.length !== 1 ? 's' : ''})
                               </h4>
-                              <button
-                                disabled={sendingWhatsapp}
-                                onClick={() => {
-                                  const mensagem = buildMessage();
-                                  handleSendWhatsapp(mensagem);
-                                }}
-                                className={`px-4 py-2 text-white text-xs font-bold rounded-xl flex items-center gap-2 active:scale-95 transition-all shadow-md ${sendingWhatsapp ? 'bg-slate-400 cursor-not-allowed shadow-none' : 'bg-[#25D366] hover:bg-[#1DA851] shadow-green-500/20'}`}
-                              >
-                                {sendingWhatsapp ? (
-                                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-                                ) : (
-                                  <img
-                                    src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='white'%3E%3Cpath d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z'/%3E%3C/svg%3E"
-                                    alt="WhatsApp"
+                              <div className="flex flex-wrap items-center gap-3">
+                                <select
+                                  value={errorsRecipient}
+                                  onChange={(e) => setErrorsRecipient(e.target.value)}
+                                  className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-primary/20 shadow-sm"
+                                >
+                                  <option value="">Grupo Geral (Padrão)</option>
+                                  <option value="5515996813326">Grupo de Erros (5515996813326)</option>
+                                  <option value="custom">Outro Número / Grupo...</option>
+                                </select>
+                                
+                                {errorsRecipient === 'custom' && (
+                                  <input
+                                    type="text"
+                                    placeholder="Número ou ID de grupo..."
+                                    value={customErrorsRecipient}
+                                    onChange={(e) => setCustomErrorsRecipient(e.target.value)}
+                                    className="px-3 py-2 text-xs font-medium rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-primary/20 shadow-sm w-44"
                                   />
                                 )}
-                                {sendingWhatsapp ? 'Enviando erros...' : 'Enviar Erros via WhatsApp'}
-                              </button>
+
+                                <button
+                                  disabled={sendingWhatsapp}
+                                  onClick={() => {
+                                    const mensagem = buildMessage();
+                                    const target = errorsRecipient === 'custom' ? customErrorsRecipient : errorsRecipient;
+                                    handleSendWhatsapp(mensagem, target);
+                                  }}
+                                  className={`px-4 py-2 text-white text-xs font-bold rounded-xl flex items-center gap-2 active:scale-95 transition-all shadow-md ${sendingWhatsapp ? 'bg-slate-400 cursor-not-allowed shadow-none' : 'bg-[#25D366] hover:bg-[#1DA851] shadow-green-500/20'}`}
+                                >
+                                  {sendingWhatsapp ? (
+                                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                                  ) : (
+                                    <img
+                                      src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='white'%3E%3Cpath d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z'/%3E%3C/svg%3E"
+                                      alt="WhatsApp"
+                                    />
+                                  )}
+                                  {sendingWhatsapp ? 'Enviando erros...' : 'Enviar Erros via WhatsApp'}
+                                </button>
+                              </div>
                             </div>
                             <div className="flex flex-wrap gap-2.5 p-1 mt-2">
                               {svcKeys.map(svcId => {
@@ -4494,7 +4594,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     );
                  })()}
 
-                 <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-7 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Filtrar por Placa</label>
                       <input 
@@ -4508,7 +4608,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Regional</label>
                       <div className="relative">
-                        <select value={detRegionalFilter} onChange={e => {setDetRegionalFilter(e.target.value); setDetSvcFilter('');}} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-blue-500 shadow-sm appearance-none">
+                        <select value={detRegionalFilter} onChange={e => {setDetRegionalFilter(e.target.value); setDetSvcFilter('');}} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 pr-10 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-blue-500 shadow-sm appearance-none">
                           <option value="">Todas</option>
                           {Object.keys(MAPEAMENTO_REGIONAIS).map(r => (
                              <option key={r} value={r}>{r}</option>
@@ -4520,7 +4620,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Filtrar por SVC</label>
                       <div className="relative">
-                        <select value={detSvcFilter} onChange={e => setDetSvcFilter(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-blue-500 shadow-sm appearance-none">
+                        <select value={detSvcFilter} onChange={e => setDetSvcFilter(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 pr-10 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-blue-500 shadow-sm appearance-none">
                           <option value="">Todos os SVCs</option>
                           {Array.from(new Set(detailedUtilizationData.map(d => d.svc)))
                              .filter(s => !detRegionalFilter || MAPEAMENTO_REGIONAIS[detRegionalFilter]?.includes(s as string))
@@ -4534,7 +4634,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Categoria (Justificativa)</label>
                       <div className="relative">
-                        <select value={detJustificationCategoryFilter} onChange={e => setDetJustificationCategoryFilter(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-blue-500 shadow-sm appearance-none">
+                        <select value={detJustificationCategoryFilter} onChange={e => setDetJustificationCategoryFilter(e.target.value)} className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 pr-10 text-sm font-bold text-slate-600 dark:text-slate-300 focus:ring-blue-500 shadow-sm appearance-none">
                           <option value="">Todas as Justificativas</option>
                           {JUSTIFICATION_OPTIONS.map(opt => (
                              <option key={opt} value={opt}>{opt}</option>
@@ -4912,6 +5012,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             </div>
           </div>
 
+          {/* Sub-tabs Selector */}
+          <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800 pb-4 mb-6">
+            <button
+              onClick={() => setReportsSubTab('custom')}
+              className={`px-5 py-2.5 text-sm font-bold rounded-xl transition-all ${reportsSubTab === 'custom' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}
+            >
+              Consultas Customizadas
+            </button>
+            <button
+              onClick={() => setReportsSubTab('downloads')}
+              className={`px-5 py-2.5 text-sm font-bold rounded-xl transition-all ${reportsSubTab === 'downloads' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}
+            >
+              Downloads em CSV (Históricos)
+            </button>
+          </div>
+
+          {reportsSubTab === 'custom' ? (
+            <>
+
           {/* Filters Form */}
           <div className="bg-slate-50 border border-slate-200 dark:bg-slate-800/40 dark:border-slate-700/50 rounded-2xl p-6 mb-8 shadow-sm">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
@@ -5180,6 +5299,52 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               )}
             </>
           )}
+            </>
+          ) : (
+            <div className="space-y-6">
+              <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-primary">download</span>
+                </div>
+                <div>
+                  <h3 className="font-black text-lg text-slate-800 dark:text-slate-100">Exportar Dados (Período)</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Exporte históricos de frota, oferta e capacidade em CSV aplicando filtros de data.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Data Inicial</label>
+                  <input type="date" value={exportStartDate} onChange={e => setExportStartDate(e.target.value)} max={getLocalDateString()} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Data Final</label>
+                  <input type="date" value={exportEndDate} onChange={e => setExportEndDate(e.target.value)} max={getLocalDateString()} className="w-full rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-3.5 text-sm focus:ring-primary/20 focus:border-primary font-medium text-slate-700 dark:text-slate-200" />
+                </div>
+              </div>
+
+              <div className="flex flex-col md:flex-row gap-4 mt-6">
+                <button onClick={() => handleExportRangeAction('fleet')} disabled={exportLoading} className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-900 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold rounded-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all shadow-md disabled:opacity-50">
+                  {exportLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined text-[18px]">list_alt</span>}
+                  Exportar Frota
+                </button>
+                <button onClick={() => handleExportRangeAction('offer')} disabled={exportLoading} className="flex-1 py-3.5 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all shadow-lg shadow-primary/30 disabled:opacity-50">
+                  {exportLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined text-[18px]">local_shipping</span>}
+                  Exportar Oferta/Cap.
+                </button>
+              </div>
+              <div className="flex flex-col md:flex-row gap-4">
+                <button onClick={handleExportOfferVsUtilization} disabled={exportLoading} className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all shadow-lg shadow-blue-600/30 disabled:opacity-50">
+                  {exportLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined text-[18px]">list_alt</span>}
+                  Cruzamento Específico (SVC e Modal)
+                </button>
+                <button onClick={handleExportOfferVsUtilizationConsolidado} disabled={exportLoading} className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2.5 active:scale-95 transition-all shadow-lg shadow-indigo-600/30 disabled:opacity-50">
+                  {exportLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined text-[18px]">functions</span>}
+                  Cruzamento Consolidado (Total por SVC)
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       ) : activeTab === 'audit' && auditResults && auditResults.dbRouteCount > 0 ? (
         <div className="space-y-6">
@@ -5312,6 +5477,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           </div>
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 };
