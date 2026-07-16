@@ -69,5 +69,50 @@ export const dataService = {
         }
 
         return data || [];
+    },
+
+    fetchPreviousJustifications: async (dateStr: string, svcId: string): Promise<Record<string, string>> => {
+        const parts = dateStr.split('-');
+        if (parts.length !== 3) return {};
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        
+        const d = new Date(year, month, day);
+        d.setDate(d.getDate() - 1);
+        
+        const prevYear = d.getFullYear();
+        const prevMonth = String(d.getMonth() + 1).padStart(2, '0');
+        const prevDay = String(d.getDate()).padStart(2, '0');
+        const prevDateStr = `${prevYear}-${prevMonth}-${prevDay}`;
+
+        const { data, error } = await supabase
+            .from('daily_reports')
+            .select('justifications')
+            .eq('date', prevDateStr)
+            .eq('svc_id', svcId)
+            .order('created_at', { ascending: false });
+
+        if (error || !data || data.length === 0) {
+            return {};
+        }
+
+        const mapping: Record<string, string> = {};
+        data.forEach(report => {
+            const justificationsStr = report.justifications || '';
+            justificationsStr.split(';').forEach((item: string) => {
+                const partsJust = item.split(' - ');
+                if (partsJust.length >= 2) {
+                    const plateRaw = partsJust[0].trim();
+                    const plate = plateRaw.replace(/"/g, '').trim();
+                    const justification = partsJust.slice(1).join(' - ').trim();
+                    if (plate && !mapping[plate]) {
+                        mapping[plate] = justification;
+                    }
+                }
+            });
+        });
+
+        return mapping;
     }
 };

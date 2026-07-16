@@ -27,6 +27,7 @@ export interface VehicleStatus {
   modal?: string;
   operation?: string;
   fleetType?: string;
+  previousJustification?: string;
 }
 
 export interface LostDriver {

@@ -52,7 +52,7 @@ const App: React.FC = () => {
     loadSVCs();
   }, []);
 
-  // Fetch Vehicles when SVC changes
+  // Fetch Vehicles when SVC or Date changes
   useEffect(() => {
     const loadVehicles = async () => {
       if (!formData.svc) {
@@ -61,7 +61,11 @@ const App: React.FC = () => {
       }
 
       try {
-        const vehicles = await dataService.fetchVehiclesBySVC(formData.svc);
+        const [vehicles, prevJustifications] = await Promise.all([
+          dataService.fetchVehiclesBySVC(formData.svc),
+          dataService.fetchPreviousJustifications(formData.date, formData.svc)
+        ]);
+
         setFormData(prev => ({
           ...prev,
           vehicleStatuses: vehicles.map(v => ({
@@ -71,7 +75,8 @@ const App: React.FC = () => {
             otherJustification: '',
             modal: v.modal,
             operation: v.operation,
-            fleetType: v.fleet_type
+            fleetType: v.fleet_type,
+            previousJustification: prevJustifications[v.plate] || 'Sem registro anterior'
           }))
         }));
       } catch (error) {
@@ -80,7 +85,7 @@ const App: React.FC = () => {
     };
 
     loadVehicles();
-  }, [formData.svc]);
+  }, [formData.svc, formData.date]);
 
   const updateFormData = useCallback((updates: Partial<FormData>) => {
     setFormData(prev => ({ ...prev, ...updates }));
