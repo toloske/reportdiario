@@ -109,6 +109,50 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditResults, setAuditResults] = useState<any[] | null>(null);
 
+  // States for direct DB sync
+  const [dbSyncDate, setDbSyncDate] = useState<string>(getLocalDateString());
+  const [dbSyncLoading, setDbSyncLoading] = useState(false);
+  const [dbSyncSuccess, setDbSyncSuccess] = useState(false);
+  const [dbSyncError, setDbSyncError] = useState<string | null>(null);
+  const [dbSyncResult, setDbSyncResult] = useState<string>('');
+
+  const handleDBSync = async (customDate?: string) => {
+    setDbSyncLoading(true);
+    setDbSyncSuccess(false);
+    setDbSyncError(null);
+    setDbSyncResult('');
+    // If customDate is passed as empty string, it means sync range (default range today/yesterday)
+    const targetDate = customDate !== undefined ? customDate : dbSyncDate;
+    try {
+      const url = targetDate ? `http://localhost:3001/sync?date=${targetDate}` : 'http://localhost:3001/sync';
+      const res = await fetch(url);
+      if (!res.ok) {
+        let errMessage = `Erro no servidor (${res.status})`;
+        try {
+          const errorData = await res.json();
+          errMessage = errorData.error || errMessage;
+        } catch {}
+        throw new Error(errMessage);
+      }
+      const data = await res.json();
+      if (data.success) {
+        setDbSyncSuccess(true);
+        setDbSyncResult(data.stdout || '');
+      } else {
+        throw new Error(data.error || 'Erro desconhecido');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setDbSyncError(err.message || "Não foi possível conectar ao servidor local. Verifique se o daemon está ativo rodando 'npm run sync-daemon'.");
+    } finally {
+      setDbSyncLoading(false);
+    }
+  };
+
+  const handleDBSyncRange = async () => {
+    await handleDBSync('');
+  };
+
   const getWeekStringFromDate = (dateStr: string) => {
     const d = new Date(dateStr + 'T00:00:00');
     const firstJan = new Date(d.getFullYear(), 0, 1);
@@ -2710,6 +2754,77 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
       {activeTab === 'audit' && (
         <div className="space-y-6">
+          
+          {/* SYNC DATABASE DIRECT SECTION */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] border border-slate-200/60 dark:border-slate-800/80 space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-emerald-500">sync_alt</span>
+                </div>
+                <div>
+                  <h3 className="font-black text-lg text-slate-800 dark:text-slate-100">Sincronizar Banco de Dados de Rotas</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Importe as rotas do dia diretamente do banco de dados MySQL para o Supabase.</p>
+                </div>
+              </div>
+              <span className="px-3 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg text-xs font-bold border border-emerald-500/20">
+                Daemon Ativo (30 min)
+              </span>
+            </div>
+
+            {dbSyncSuccess && (
+               <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded-xl border border-emerald-200/60 dark:border-emerald-800/50 text-sm font-medium flex flex-col gap-2 shadow-sm animate-in fade-in duration-300">
+                 <div className="flex items-center gap-2.5">
+                   <span className="material-symbols-outlined text-emerald-500">check_circle</span>
+                   <span className="font-bold">Sincronização concluída com sucesso!</span>
+                 </div>
+                 {dbSyncResult && (
+                   <pre className="mt-2 p-3 bg-slate-900 text-slate-200 rounded-lg text-xs font-mono max-h-40 overflow-y-auto whitespace-pre-wrap select-all">
+                     {dbSyncResult}
+                   </pre>
+                 )}
+               </div>
+            )}
+
+            {dbSyncError && (
+               <div className="p-4 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 rounded-xl border border-red-200/60 dark:border-red-800/50 text-sm font-medium shadow-sm animate-in fade-in duration-300">
+                 <div className="flex items-center gap-2.5">
+                   <span className="material-symbols-outlined text-red-500">error</span>
+                   <span>{dbSyncError}</span>
+                 </div>
+               </div>
+            )}
+
+            <div className="flex flex-col md:flex-row gap-4 items-end">
+              <div className="w-full md:w-1/3">
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Data para Sincronização:</label>
+                <input
+                  type="date"
+                  value={dbSyncDate}
+                  onChange={e => setDbSyncDate(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-primary dark:text-slate-200"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                <button
+                  disabled={dbSyncLoading}
+                  onClick={() => handleDBSync()}
+                  className="px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-2 transition-all active:scale-95 text-xs sm:text-sm"
+                >
+                  {dbSyncLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined">sync</span>}
+                  Sincronizar Data Selecionada
+                </button>
+                <button
+                  disabled={dbSyncLoading}
+                  onClick={handleDBSyncRange}
+                  className="px-6 py-3.5 bg-slate-700 hover:bg-slate-800 text-white font-bold rounded-xl shadow-lg border border-slate-600 disabled:opacity-50 flex items-center justify-center gap-2 transition-all active:scale-95 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs sm:text-sm"
+                >
+                  {dbSyncLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <span className="material-symbols-outlined">history</span>}
+                  Sincronizar Hoje & Ontem
+                </button>
+              </div>
+            </div>
+          </div>
           
           {/* IMPORT SECTION */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] border border-slate-200/60 dark:border-slate-800/80 space-y-6">
