@@ -91,20 +91,27 @@ const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSav
                           </div>
                           <div className="text-right flex items-center gap-3">
                             <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider hidden sm:block">Rodou?</span>
-                            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-fit">
-                              <button
-                                onClick={() => updateVehicle(vehicle.plate, { ranToday: true, justification: undefined, otherJustification: undefined, hiringForecast: undefined })}
-                                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${vehicle.ranToday ? 'bg-primary text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
-                              >
-                                Sim
-                              </button>
-                              <button
-                                onClick={() => updateVehicle(vehicle.plate, { ranToday: false })}
-                                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${!vehicle.ranToday ? 'bg-red-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
-                              >
-                                Não
-                              </button>
-                            </div>
+                            {vehicle.hasRoute ? (
+                              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 dark:border-emerald-500/30 rounded-xl text-xs font-bold shadow-sm">
+                                <span className="material-symbols-outlined text-[15px]">check_circle</span>
+                                Rota Confirmada
+                              </div>
+                            ) : (
+                              <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-fit">
+                                <button
+                                  onClick={() => updateVehicle(vehicle.plate, { ranToday: true, justification: undefined, otherJustification: undefined, hiringForecast: undefined })}
+                                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${vehicle.ranToday ? 'bg-primary text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                                >
+                                  Sim
+                                </button>
+                                <button
+                                  onClick={() => updateVehicle(vehicle.plate, { ranToday: false })}
+                                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${!vehicle.ranToday ? 'bg-red-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                                >
+                                  Não
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
 

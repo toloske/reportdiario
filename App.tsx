@@ -61,23 +61,30 @@ const App: React.FC = () => {
       }
 
       try {
-        const [vehicles, prevJustifications] = await Promise.all([
+        const [vehicles, prevJustifications, routedPlates] = await Promise.all([
           dataService.fetchVehiclesBySVC(formData.svc),
-          dataService.fetchPreviousJustifications(formData.date, formData.svc)
+          dataService.fetchPreviousJustifications(formData.date, formData.svc),
+          dataService.fetchRoutedPlatesByDate(formData.date)
         ]);
+
+        const routedPlatesSet = new Set(routedPlates);
 
         setFormData(prev => ({
           ...prev,
-          vehicleStatuses: vehicles.map(v => ({
-            plate: v.plate,
-            ranToday: true, // Default to true
-            justification: '',
-            otherJustification: '',
-            modal: v.modal,
-            operation: v.operation,
-            fleetType: v.fleet_type,
-            previousJustification: prevJustifications[v.plate] || 'Sem registro anterior'
-          }))
+          vehicleStatuses: vehicles.map(v => {
+            const hasRoute = routedPlatesSet.has(v.plate);
+            return {
+              plate: v.plate,
+              ranToday: true,
+              justification: '',
+              otherJustification: '',
+              modal: v.modal,
+              operation: v.operation,
+              fleetType: v.fleet_type,
+              previousJustification: prevJustifications[v.plate] || 'Sem registro anterior',
+              hasRoute
+            };
+          })
         }));
       } catch (error) {
         console.error("Failed to load vehicles", error);

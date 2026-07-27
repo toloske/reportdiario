@@ -28,6 +28,7 @@ export interface VehicleStatus {
   operation?: string;
   fleetType?: string;
   previousJustification?: string;
+  hasRoute?: boolean;
 }
 
 export interface LostDriver {

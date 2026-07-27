@@ -114,5 +114,18 @@ export const dataService = {
         });
 
         return mapping;
+    },
+
+    fetchRoutedPlatesByDate: async (dateStr: string): Promise<string[]> => {
+        const { data, error } = await supabase
+            .from('daily_routes')
+            .select('plate')
+            .eq('date', dateStr);
+
+        if (error) {
+            console.error("Error fetching routed plates:", error);
+            return [];
+        }
+        return (data || []).map(r => r.plate);
     }
 };
