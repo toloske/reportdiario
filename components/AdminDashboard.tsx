@@ -4,6 +4,7 @@ import { supabase } from '../services/supabaseClient';
 import { getReportsByDate, getReportsByDateRange, saveDailyRoutes, getDailyRoutesByDate, getDailyRoutesByDateRange, updateReportJustifications, updateReportSupervisorStatuses, updateReportOffer, updateReportCapacity } from '../services/storageService';
 import { dataService, SVC, Vehicle } from '../services/dataService';
 import { whatsappService } from '../services/whatsappService';
+import { corteSummaryService } from '../services/corteSummaryService';
 import { INITIAL_CATEGORIES, JUSTIFICATION_OPTIONS } from '../constants';
 
 import Papa from 'papaparse';
@@ -43,6 +44,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [fixedVehicles, setFixedVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(false);
   const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
+  const [corteWhatsappLoading, setCorteWhatsappLoading] = useState(false);
 
   const handleSendWhatsapp = async (message: string, recipient?: string) => {
     setSendingWhatsapp(true);
@@ -55,6 +57,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       setSendingWhatsapp(false);
     }
   };
+
+  const handleSendCorteWhatsapp = async (customRecipient?: string) => {
+    setCorteWhatsappLoading(true);
+    try {
+      const success = await corteSummaryService.sendRegionalSummaryWhatsApp(selectedDate, customRecipient);
+      if (success) {
+        alert("Resumo de Corte (Regionais + SVCs Críticos) enviado com sucesso via WhatsApp!");
+      }
+    } catch (error: any) {
+      alert("Falha ao enviar Resumo de Corte via WhatsApp: " + error.message);
+    } finally {
+      setCorteWhatsappLoading(false);
+    }
+  };
+
+  const handleSendDriverPerformanceWhatsapp = async (svcId: string = 'SSP18', customRecipient?: string) => {
+    setCorteWhatsappLoading(true);
+    try {
+      const prevDate = getPreviousDayDateStr(selectedDate);
+      const success = await corteSummaryService.sendDriverPerformanceWhatsApp(prevDate, svcId, customRecipient);
+      if (success) {
+        alert(`Performance por Driver (D-1: ${prevDate.split('-').reverse().join('/')}) do SVC ${svcId} enviada com sucesso no WhatsApp!`);
+      }
+    } catch (error: any) {
+      alert("Falha ao enviar Performance por Driver via WhatsApp: " + error.message);
+    } finally {
+      setCorteWhatsappLoading(false);
+    }
+  };
+
   
   const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'|'director'|'summary'|'efficiency'|'reports'>('daily');
   const [startDate, setStartDate] = useState<string>(
@@ -4466,14 +4498,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 (detStatusFilter === 'all' || (detStatusFilter === 'ran' ? d.didRun : !d.didRun)) &&
                 (detFleetTypeFilter === 'all' || (detFleetTypeFilter === 'fixed' ? d.fleetType === 'Frota Fixa' : d.fleetType === 'Próprio')) &&
                 (detAnomalyFilter === 'all' || 
-                 (detAnomalyFilter === 'divergent' && (
-                     (!d.didRun && d.reason && d.reason.toUpperCase().includes('RODOU')) ||
-                     (d.didRun && d.reason && d.reason.startsWith('[RODOU]')) ||
-                     (!d.didRun && d.reason === 'Sem justificativa preenchida')
-                 )) ||
-                 (detAnomalyFilter === 'red' && (
-                     (!d.didRun && d.reason && d.reason.toUpperCase().includes('RODOU')) ||
-                     (!d.didRun && d.reason === 'Sem justificativa preenchida')
+                 (d.svc !== 'XPT' && (
+                   (detAnomalyFilter === 'divergent' && (
+                       (!d.didRun && d.reason && d.reason.toUpperCase().includes('RODOU')) ||
+                       (d.didRun && d.reason && d.reason.startsWith('[RODOU]')) ||
+                       (!d.didRun && d.reason === 'Sem justificativa preenchida')
+                   )) ||
+                   (detAnomalyFilter === 'red' && (
+                       (!d.didRun && d.reason && d.reason.toUpperCase().includes('RODOU')) ||
+                       (!d.didRun && d.reason === 'Sem justificativa preenchida')
+                   ))
                  ))
                 )
              );
@@ -4541,8 +4575,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                   {/* SEÇÃO DE ERROS DE PREENCHIMENTO E SEM DRIVER - WHATSAPP */}
                   {(() => {
                     const visibleErrors = finalDisplayedDetails.filter(d =>
-                      (!d.didRun && d.reason && d.reason.toUpperCase().includes('RODOU')) ||
-                      (!d.didRun && d.reason === 'Sem justificativa preenchida')
+                      d.svc !== 'XPT' && (
+                        (!d.didRun && d.reason && d.reason.toUpperCase().includes('RODOU')) ||
+                        (!d.didRun && d.reason === 'Sem justificativa preenchida')
+                      )
                     );
 
                     const errorsBySvc: Record<string, { svcName: string, plates: { date: string, plate: string, reason: string }[] }> = {};
@@ -5535,6 +5571,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                   Cruzamento Consolidado (Total por SVC)
                 </button>
               </div>
+
+
+
             </div>
           )}
         </div>

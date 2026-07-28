@@ -59,6 +59,7 @@ async function run() {
   // node sync_routes_mysql.js --start 2026-06-01 --end 2026-06-03
   
   const args = process.argv.slice(2);
+  const forceCorte = args.includes('--send-corte') || args.includes('--force-corte');
   let targetDates = [];
 
   const getRelativeDate = (offsetDays) => {
@@ -153,7 +154,7 @@ async function run() {
             route_id: String(rawRouteId).trim(),
             date: formattedDate,
             plate: cleanedPlate,
-            driver_id: getVal(row.ID_Motorista) || getVal(row.Motorista) || getVal(row.CPF_Motorista),
+            driver_id: getVal(row.Motorista) || getVal(row.ID_Motorista) || getVal(row.CPF_Motorista),
             vehicle_type: getVal(row.Tipo_Veiculo),
             svc_id: getVal(row.Service),
             xpt: getVal(row.XPT),
@@ -219,6 +220,7 @@ async function run() {
         console.error(`Erro ao verificar alertas de preenchimento para a data ${date}:`, err);
       }
     }
+
 
   } catch (error) {
     console.error("Erro crítico na sincronização de rotas:", error);
@@ -301,8 +303,8 @@ async function checkAndAlertFillingErrors(targetDate) {
     return;
   }
 
-  // Filter fixed vehicles that are in our expected SVCs
-  const relevantVehicles = fixedVehicles.filter(v => expectedSvcIds.includes(v.svc_id));
+  // Filter fixed vehicles that are in our expected SVCs, excluding XPT since we have no vision of their routes
+  const relevantVehicles = fixedVehicles.filter(v => expectedSvcIds.includes(v.svc_id) && v.svc_id !== 'XPT');
 
   // Parse submitted justifications: map plate -> justification
   const justificationsMap = {};
@@ -334,7 +336,11 @@ async function checkAndAlertFillingErrors(targetDate) {
 
   // Detect errors
   const errors = []; // array of { plate, svc, reason }
+  
+  // 1. Check all relevant fixed vehicles (excluding XPT)
   for (const vehicle of relevantVehicles) {
+    if (vehicle.svc_id === 'XPT') continue; // safeguard
+
     const hasRoute = routedPlates.has(vehicle.plate);
     const justification = justificationsMap[vehicle.plate];
 
@@ -347,6 +353,24 @@ async function checkAndAlertFillingErrors(targetDate) {
         // Error: No justification filled
         errors.push({ plate: vehicle.plate, svc: vehicle.svc_id, reason: 'Sem justificativa preenchida' });
       }
+    }
+  }
+
+  // 2. Check Próprio (third-party) vehicles that were justified in reports as RODOU but had no route
+  const fixedPlatesSet = new Set(relevantVehicles.map(v => v.plate));
+  for (const plate of Object.keys(justificationsMap)) {
+    if (fixedPlatesSet.has(plate)) continue; // already checked as fixed vehicle
+
+    // Find which report/SVC this plate belongs to
+    const rep = reports.find(r => r.justifications && r.justifications.includes(plate));
+    const svcId = rep ? rep.svc_id : '';
+    if (!svcId || svcId === 'XPT' || !expectedSvcIds.includes(svcId)) continue; // skip XPT or irrelevant
+
+    const hasRoute = routedPlates.has(plate);
+    const justification = justificationsMap[plate];
+
+    if (!hasRoute && justification && justification.toUpperCase().includes('RODOU')) {
+      errors.push({ plate, svc: svcId, reason: justification });
     }
   }
 
@@ -409,7 +433,7 @@ async function checkAndAlertFillingErrors(targetDate) {
       url: process.env.VITE_EVOLUTION_API_URL,
       key: process.env.VITE_EVOLUTION_API_KEY,
       instance: process.env.VITE_EVOLUTION_INSTANCE,
-      recipient: process.env.VITE_WHATSAPP_DEFAULT_RECIPIENT
+      recipient: process.env.VITE_WHATSAPP_ERRORS_RECIPIENT || '5515996813326'
     };
 
     if (apiOpts.url && apiOpts.key && apiOpts.instance && apiOpts.recipient) {
@@ -456,4 +480,207 @@ async function checkAndAlertFillingErrors(targetDate) {
   }
 }
 
+// Function: Calculate regional & critical SVC metrics and send corte summary to WhatsApp group
+async function checkAndSendCorteSummary(targetDate, forceSend = false) {
+  const corteNotifiedFile = path.join(process.cwd(), 'whatsapp_corte_notified.json');
+  let notifiedKeys = [];
+  try {
+    if (fs.existsSync(corteNotifiedFile)) {
+      notifiedKeys = JSON.parse(fs.readFileSync(corteNotifiedFile, 'utf8'));
+    }
+  } catch (e) {
+    console.error("Erro ao ler whatsapp_corte_notified.json:", e);
+  }
+
+  const currentHour = new Date().getHours();
+  const corteKey = `${targetDate}_06:00`;
+
+  // Trigger if forceSend is true OR currentHour is >= 6 and key not sent yet
+  const isTimeForCorte = forceSend || (currentHour >= 6 && !notifiedKeys.includes(corteKey));
+
+  if (!isTimeForCorte) {
+    console.log(`[Corte 06:00 WhatsApp] Fora do horário de corte das 06:00 ou já notificado hoje (${corteKey}). Pulando.`);
+    return;
+  }
+
+  if (notifiedKeys.includes(corteKey) && !forceSend) {
+    console.log(`[Corte 06:00 WhatsApp] Resumo de corte ${corteKey} já enviado hoje. Pulando.`);
+    return;
+  }
+
+  console.log(`[Corte 06:00 WhatsApp] Gerando e enviando resumo por regional para ${targetDate}...`);
+
+  const groupRecipient = process.env.VITE_WHATSAPP_GROUP_RECIPIENT || '120363284501155529@g.us';
+
+  const MAPEAMENTO_REGIONAIS = {
+    "Regional 1": ["SSP20", "SSP27", "SSP36", "XPT", "SSP3", "SSP37", "SSP38", "SSP9", "SSP29"],
+    "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP49", "SSP57", "SSP7", "SSP8", "SSP18", "SSP25"],
+    "Regional 3": ["SSP10", "SSP12", "SSP22", "SSP26", "SSP28", "SSP31", "SSP4"]
+  };
+
+  const { data: svcs } = await supabase.from('service_centers').select('id, name');
+  const svcNamesMap = {};
+  if (svcs) svcs.forEach(s => { svcNamesMap[s.id] = s.name; });
+
+  const { data: vehicles, error: vehErr } = await supabase
+    .from('vehicles')
+    .select('plate, fleet_type, svc_id')
+    .eq('active', true);
+
+  if (vehErr) {
+    console.error("[Corte 06:00 WhatsApp] Erro ao buscar veículos:", vehErr.message);
+    return;
+  }
+
+  const { data: routes, error: rErr } = await supabase
+    .from('daily_routes')
+    .select('plate, route_id, svc_id, xpt')
+    .eq('date', targetDate);
+
+  if (rErr) {
+    console.error("[Corte 06:00 WhatsApp] Erro ao buscar rotas:", rErr.message);
+    return;
+  }
+
+  const uniqueRoutePlates = new Set((routes || []).map(r => r.plate));
+
+  const svcData = {};
+
+  vehicles.forEach(v => {
+    const sId = v.svc_id;
+    if (!svcData[sId]) {
+      svcData[sId] = { totalFF: 0, loadedFF: 0, totalTransmana: 0, loadedTransmana: 0, loadedSpot: 0 };
+    }
+    if (v.fleet_type === 'FROTA FIXA') {
+      svcData[sId].totalFF++;
+      if (uniqueRoutePlates.has(v.plate)) svcData[sId].loadedFF++;
+    } else if (v.fleet_type === 'FROTA PRÓPRIA') {
+      svcData[sId].totalTransmana++;
+      if (uniqueRoutePlates.has(v.plate)) svcData[sId].loadedTransmana++;
+    }
+  });
+
+  (routes || []).forEach(r => {
+    const sId = r.xpt?.toUpperCase() === 'ESP8' ? 'XPT' : (r.svc_id || '');
+    const vehicle = vehicles.find(v => v.plate === r.plate);
+    if (!vehicle || (vehicle.fleet_type !== 'FROTA FIXA' && vehicle.fleet_type !== 'FROTA PRÓPRIA')) {
+      if (!svcData[sId]) {
+        svcData[sId] = { totalFF: 0, loadedFF: 0, totalTransmana: 0, loadedTransmana: 0, loadedSpot: 0 };
+      }
+      svcData[sId].loadedSpot++;
+    }
+  });
+
+  const dateFormatted = targetDate.split('-').reverse().join('/');
+  const corteTimeStr = "06:00";
+
+  let msg = `📊 *RESUMO DE CARREGAMENTO POR REGIONAL*\n`;
+  msg += `📅 *Data:* ${dateFormatted} | ⏰ *Corte:* ${corteTimeStr}\n\n`;
+
+  let totalGeneralFF = 0, totalGeneralLoadedFF = 0;
+  let totalGeneralTransmana = 0, totalGeneralLoadedTransmana = 0;
+  let totalGeneralSpot = 0;
+
+  Object.keys(MAPEAMENTO_REGIONAIS).forEach(reg => {
+    msg += `📍 *${reg.toUpperCase()}*\n`;
+    const svcList = MAPEAMENTO_REGIONAIS[reg];
+    let regFF = 0, regLoadedFF = 0;
+    let regTransmana = 0, regLoadedTransmana = 0;
+    let regSpot = 0;
+
+    const svcLines = [];
+
+    svcList.forEach(sId => {
+      const d = svcData[sId];
+      if (d && (d.totalFF > 0 || d.totalTransmana > 0 || d.loadedSpot > 0)) {
+        regFF += d.totalFF;
+        regLoadedFF += d.loadedFF;
+        regTransmana += d.totalTransmana;
+        regLoadedTransmana += d.loadedTransmana;
+        regSpot += d.loadedSpot;
+
+        const totalFixed = d.totalFF + d.totalTransmana;
+        const loadedFixed = d.loadedFF + d.loadedTransmana;
+        const percFixed = totalFixed > 0 ? (loadedFixed / totalFixed) * 100 : 0;
+        
+        const isCritical = totalFixed > 0 && percFixed < 50;
+        const statusEmoji = isCritical ? '🚨' : (percFixed >= 80 ? '🟢' : '🟡');
+        const criticalTag = isCritical ? ' *[CRÍTICO <50%]*' : '';
+        const name = svcNamesMap[sId] || sId;
+
+        svcLines.push(`  ${statusEmoji} *${name}*: FF ${d.loadedFF}/${d.totalFF} | Transmana ${d.loadedTransmana}/${d.totalTransmana} | SPOT ${d.loadedSpot} (${percFixed.toFixed(0)}%)${criticalTag}`);
+      }
+    });
+
+    totalGeneralFF += regFF;
+    totalGeneralLoadedFF += regLoadedFF;
+    totalGeneralTransmana += regTransmana;
+    totalGeneralLoadedTransmana += regLoadedTransmana;
+    totalGeneralSpot += regSpot;
+
+    const totalRegFixed = regFF + regTransmana;
+    const loadedRegFixed = regLoadedFF + regLoadedTransmana;
+    const percRegFixed = totalRegFixed > 0 ? ((loadedRegFixed / totalRegFixed) * 100).toFixed(1) : '0';
+
+    msg += `   └ Frota: ${loadedRegFixed}/${totalRegFixed} (${percRegFixed}%) | SPOTS: ${regSpot}\n`;
+    if (svcLines.length > 0) {
+      msg += svcLines.join('\n') + '\n';
+    }
+    msg += '\n';
+  });
+
+  const totalGeneralFixed = totalGeneralFF + totalGeneralTransmana;
+  const loadedGeneralFixed = totalGeneralLoadedFF + totalGeneralLoadedTransmana;
+  const percGeneralFixed = totalGeneralFixed > 0 ? ((loadedGeneralFixed / totalGeneralFixed) * 100).toFixed(1) : '0';
+
+  msg += `-----------------------------------\n`;
+  msg += `📈 *RESUMO GERAL DO DIA*\n`;
+  msg += `🚗 *Carros FF:* ${totalGeneralLoadedFF}/${totalGeneralFF} (${totalGeneralFF > 0 ? ((totalGeneralLoadedFF/totalGeneralFF)*100).toFixed(1) : 0}%)\n`;
+  msg += `🚐 *Frota Transmana:* ${totalGeneralLoadedTransmana}/${totalGeneralTransmana} (${totalGeneralTransmana > 0 ? ((totalGeneralLoadedTransmana/totalGeneralTransmana)*100).toFixed(1) : 0}%)\n`;
+  msg += `⚡ *Carros SPOTS:* ${totalGeneralSpot}\n`;
+  msg += `🏆 *Frota Fixa + Transmana Total:* ${loadedGeneralFixed}/${totalGeneralFixed} (${percGeneralFixed}%)\n`;
+  msg += `📦 *Total de Veículos em Rota:* ${loadedGeneralFixed + totalGeneralSpot}\n`;
+
+  const apiOpts = {
+    url: process.env.VITE_EVOLUTION_API_URL,
+    key: process.env.VITE_EVOLUTION_API_KEY,
+    instance: process.env.VITE_EVOLUTION_INSTANCE
+  };
+
+  if (apiOpts.url && apiOpts.key && apiOpts.instance && groupRecipient) {
+    console.log(`[Corte 06:00 WhatsApp] Enviando mensagem de corte para ${groupRecipient}...`);
+    try {
+      const res = await fetch(`${apiOpts.url}/message/sendText/${apiOpts.instance}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': apiOpts.key
+        },
+        body: JSON.stringify({
+          number: groupRecipient,
+          text: msg,
+          delay: 1200,
+          linkPreview: false
+        })
+      });
+
+      if (res.ok) {
+        console.log(`[Corte 06:00 WhatsApp] Resumo enviado com sucesso para ${groupRecipient}.`);
+        if (!notifiedKeys.includes(corteKey)) {
+          notifiedKeys.push(corteKey);
+          fs.writeFileSync(corteNotifiedFile, JSON.stringify(notifiedKeys, null, 2));
+        }
+      } else {
+        const errText = await res.text();
+        console.error(`[Corte 06:00 WhatsApp] Erro ao enviar (status ${res.status}):`, errText);
+      }
+    } catch (err) {
+      console.error(`[Corte 06:00 WhatsApp] Exceção ao enviar:`, err.message);
+    }
+  } else {
+    console.warn(`[Corte 06:00 WhatsApp] Credenciais de Evolution API ausentes no .env.`);
+  }
+}
+
 run();
+
