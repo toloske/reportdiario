@@ -474,7 +474,117 @@ async function checkAndAlertFillingErrors(targetDate) {
       console.warn(`[Alerta WhatsApp] Credenciais de WhatsApp incompletas no .env. Não enviado.`);
     }
   } else {
-    console.log(`[Alerta WhatsApp] Nenhum erro de preenchimento encontrado para ${targetDate}. Salvando data.`);
+    console.log(`[Alerta WhatsApp] Nenhum erro de preenchimento encontrado para ${targetDate}. Verificando veículos sem driver...`);
+    
+    // Find all vehicles justified as "sem driver"
+    const semDriverPlates = [];
+    for (const plate of Object.keys(justificationsMap)) {
+      const justification = justificationsMap[plate];
+      if (justification && justification.toLowerCase().includes('sem driver')) {
+        // Find which SVC this report belongs to
+        const rep = reports.find(r => r.justifications && r.justifications.includes(plate));
+        const svcId = rep ? rep.svc_id : '';
+        if (svcId && expectedSvcIds.includes(svcId) && svcId !== 'XPT') {
+          semDriverPlates.push({ plate, svc: svcId, reason: justification });
+        }
+      }
+    }
+
+    console.log(`[Alerta WhatsApp] Encontrados ${semDriverPlates.length} veículos sem driver.`);
+
+    if (semDriverPlates.length > 0) {
+      // Fetch SVC names
+      const { data: svcs, error: svcsError } = await supabase
+        .from('service_centers')
+        .select('id, name');
+
+      const svcNamesMap = {};
+      if (!svcsError && svcs) {
+        svcs.forEach(s => { svcNamesMap[s.id] = s.name; });
+      }
+
+      // Group by SVC
+      const semDriverBySvc = {};
+      semDriverPlates.forEach(e => {
+        if (!semDriverBySvc[e.svc]) {
+          semDriverBySvc[e.svc] = { svcName: svcNamesMap[e.svc] || e.svc, plates: [] };
+        }
+        semDriverBySvc[e.svc].plates.push(e);
+      });
+
+      // Regionals mapping
+      const MAPEAMENTO_REGIONAIS = {
+        "Regional 1": ["SSP20", "SSP27", "SSP36", "XPT", "SSP3", "SSP37", "SSP38", "SSP9", "SSP29"],
+        "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP49", "SSP57", "SSP7", "SSP8", "SSP18", "SSP25"],
+        "Regional 3": ["SSP10", "SSP12", "SSP22", "SSP26", "SSP28", "SSP31", "SSP4"]
+      };
+
+      const dateFormatted = targetDate.split('-').reverse().join('/');
+      let msg = `🚗 *Veículos Sem Driver - ${dateFormatted}*\n\n`;
+      msg += `Todos os relatórios foram preenchidos sem divergências! Segue a lista de veículos parados por motivo de "Sem Driver":\n\n`;
+
+      const byRegional = {};
+      Object.keys(semDriverBySvc).forEach(svcId => {
+        const reg = Object.keys(MAPEAMENTO_REGIONAIS).find(k => MAPEAMENTO_REGIONAIS[k].includes(svcId)) || 'Outras Regionais';
+        if (!byRegional[reg]) byRegional[reg] = [];
+        byRegional[reg].push(svcId);
+      });
+
+      Object.keys(byRegional).sort().forEach(reg => {
+        msg += `*${reg}*\n`;
+        byRegional[reg].forEach(svcId => {
+          const group = semDriverBySvc[svcId];
+          msg += `  ${group.svcName}\n`;
+          group.plates.forEach(p => {
+            msg += `    • *${p.plate}* (${p.reason})\n`;
+          });
+        });
+        msg += '\n';
+      });
+
+      const semDriverRecipient = process.env.VITE_WHATSAPP_SEM_DRIVER_RECIPIENT || '5515996813326';
+      
+      const apiOpts = {
+        url: process.env.VITE_EVOLUTION_API_URL,
+        key: process.env.VITE_EVOLUTION_API_KEY,
+        instance: process.env.VITE_EVOLUTION_INSTANCE,
+        recipient: semDriverRecipient
+      };
+
+      if (apiOpts.url && apiOpts.key && apiOpts.instance && apiOpts.recipient) {
+        console.log(`[Alerta WhatsApp] Enviando lista de sem driver para ${apiOpts.recipient}...`);
+        try {
+          let number = apiOpts.recipient.trim();
+          if (!number.includes('@')) {
+            number = number.replace(/\D/g, '');
+          }
+
+          const res = await fetch(`${apiOpts.url}/message/sendText/${apiOpts.instance}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': apiOpts.key
+            },
+            body: JSON.stringify({
+              number: number,
+              text: msg,
+              delay: 1200,
+              linkPreview: true
+            })
+          });
+
+          if (res.ok) {
+            console.log(`[Alerta WhatsApp] Lista de sem driver enviada com sucesso.`);
+          } else {
+            const errText = await res.text();
+            console.error(`[Alerta WhatsApp] Erro no envio de sem driver (status ${res.status}):`, errText);
+          }
+        } catch (sendErr) {
+          console.error(`[Alerta WhatsApp] Falha na requisição da Evolution API (sem driver):`, sendErr.message);
+        }
+      }
+    }
+
     notifiedDates.push(targetDate);
     fs.writeFileSync(notifiedFilePath, JSON.stringify(notifiedDates, null, 2));
   }
