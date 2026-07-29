@@ -105,7 +105,8 @@ async function run() {
   let connection;
   try {
     console.log("Conectando ao banco de rotas MySQL...");
-    connection = await mysql.createConnection(mysqlConfig);
+    const createConn = mysql.createConnection || (mysql.default && mysql.default.createConnection);
+    connection = await createConn(mysqlConfig);
     console.log("Conectado com sucesso ao MySQL.");
 
     // Query daily routes from MySQL view
@@ -433,7 +434,7 @@ async function checkAndAlertFillingErrors(targetDate) {
       url: process.env.VITE_EVOLUTION_API_URL,
       key: process.env.VITE_EVOLUTION_API_KEY,
       instance: process.env.VITE_EVOLUTION_INSTANCE,
-      recipient: process.env.VITE_WHATSAPP_ERRORS_RECIPIENT || '5515996813326'
+      recipient: process.env.VITE_WHATSAPP_ERRORS_RECIPIENT || '120363284501155529@g.us'
     };
 
     if (apiOpts.url && apiOpts.key && apiOpts.instance && apiOpts.recipient) {
@@ -542,7 +543,7 @@ async function checkAndAlertFillingErrors(targetDate) {
         msg += '\n';
       });
 
-      const semDriverRecipient = process.env.VITE_WHATSAPP_SEM_DRIVER_RECIPIENT || '5515996813326';
+      const semDriverRecipient = process.env.VITE_WHATSAPP_SEM_DRIVER_RECIPIENT || '120363333587397484@g.us';
       
       const apiOpts = {
         url: process.env.VITE_EVOLUTION_API_URL,

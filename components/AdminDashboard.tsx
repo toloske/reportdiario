@@ -129,9 +129,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [reportsSubTab, setReportsSubTab] = useState<'custom' | 'downloads'>('custom');
   const [missingRecipient, setMissingRecipient] = useState<string>('');
   const [customMissingRecipient, setCustomMissingRecipient] = useState<string>('');
-  const [errorsRecipient, setErrorsRecipient] = useState<string>('5515996813326');
+  const [errorsRecipient, setErrorsRecipient] = useState<string>('120363284501155529');
   const [customErrorsRecipient, setCustomErrorsRecipient] = useState<string>('');
-  const [semDriverRecipient, setSemDriverRecipient] = useState<string>('');
+  const [semDriverRecipient, setSemDriverRecipient] = useState<string>('120363333587397484');
   const [customSemDriverRecipient, setCustomSemDriverRecipient] = useState<string>('');
   const [spotRecipient, setSpotRecipient] = useState<string>('');
   const [customSpotRecipient, setCustomSpotRecipient] = useState<string>('');
