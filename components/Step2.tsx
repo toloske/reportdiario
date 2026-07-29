@@ -29,6 +29,14 @@ const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSav
       return;
     }
 
+    const missingCarroReservaInfo = data.vehicleStatuses.find(
+      v => !v.ranToday && v.justification === 'Carro reserva' && (!v.otherJustification || !v.otherJustification.trim() || v.otherJustification.trim().replace(/[^A-Z0-9]/gi, '').length < 5)
+    );
+    if (missingCarroReservaInfo) {
+      alert(`Para o veículo ${missingCarroReservaInfo.plate} (Carro reserva), é OBRIGATÓRIO informar a placa do carro reserva que rodou no lugar.`);
+      return;
+    }
+
     const nonRunningVehicles = data.vehicleStatuses.filter(v => !v.ranToday);
     if (nonRunningVehicles.length > 0) {
       setShowConfirmModal(true);
@@ -130,14 +138,21 @@ const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSav
                             </select>
 
                             {vehicle.justification === 'Carro reserva' && (
-                              <div className="mt-2">
-                                <textarea
-                                  className="w-full rounded-lg border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-sm focus:ring-primary focus:border-primary p-2 border"
-                                  placeholder="Descreva o motivo detalhadamente..."
-                                  rows={2}
+                              <div className="mt-2 text-left">
+                                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                                  Placa do Carro Reserva <span className="text-red-500 font-bold">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  className="w-full rounded-lg border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-sm focus:ring-primary focus:border-primary p-2 border uppercase font-mono tracking-wider"
+                                  placeholder="Informe a placa do reserva (ex: ABC1D23)"
+                                  maxLength={8}
                                   value={vehicle.otherJustification || ''}
-                                  onChange={(e) => updateVehicle(vehicle.plate, { otherJustification: e.target.value })}
+                                  onChange={(e) => updateVehicle(vehicle.plate, { otherJustification: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
                                 />
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                                  Esta placa será checada no sistema para validar a rota realizada no lugar do veículo {vehicle.plate}.
+                                </p>
                               </div>
                             )}
 

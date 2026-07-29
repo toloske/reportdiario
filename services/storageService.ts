@@ -58,7 +58,8 @@ export const saveReport = async (data: FormData): Promise<SavedReport | null> =>
     } else {
       let just = `"${v.plate}" - ${v.justification}`;
       if (v.justification === 'Carro reserva' && v.otherJustification) {
-        just += ` (${v.otherJustification})`;
+        const cleanPlate = v.otherJustification.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        just += ` (Reserva: ${cleanPlate})`;
       }
       if (v.justification === 'Sem Driver' && v.hiringForecast) {
         let formattedDate = v.hiringForecast;

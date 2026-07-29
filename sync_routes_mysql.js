@@ -338,6 +338,20 @@ async function checkAndAlertFillingErrors(targetDate) {
   // Detect errors
   const errors = []; // array of { plate, svc, reason }
   
+  // Helper para extrair a placa do carro reserva a partir da justificativa
+  function extractReservePlate(justificationStr, originalPlate) {
+    if (!justificationStr) return null;
+    const candidates = justificationStr.match(/[A-Z0-9]{5,8}/gi) || [];
+    const origUpper = (originalPlate || '').toUpperCase();
+    for (const cand of candidates) {
+      const uCand = cand.toUpperCase();
+      if (uCand !== 'CARRO' && uCand !== 'RESERVA' && uCand !== 'FALTA' && uCand !== 'FOLGA' && uCand !== origUpper) {
+        return uCand;
+      }
+    }
+    return null;
+  }
+
   // 1. Check all relevant fixed vehicles (excluding XPT)
   for (const vehicle of relevantVehicles) {
     if (vehicle.svc_id === 'XPT') continue; // safeguard
@@ -346,11 +360,37 @@ async function checkAndAlertFillingErrors(targetDate) {
     const justification = justificationsMap[vehicle.plate];
 
     if (!hasRoute) {
-      // Did not run
-      if (justification && justification.toUpperCase().includes('RODOU')) {
-        // Error: Marked as RODOU but did not run
-        errors.push({ plate: vehicle.plate, svc: vehicle.svc_id, reason: justification });
-      } else if (!justification) {
+      // Did not run on original plate
+      if (justification) {
+        const justUpper = justification.toUpperCase();
+        
+        if (justUpper.includes('RODOU')) {
+          // Error: Marked as RODOU but did not run
+          errors.push({ plate: vehicle.plate, svc: vehicle.svc_id, reason: justification });
+        } else if (justUpper.includes('CARRO RESERVA') || justUpper.includes('RESERVA')) {
+          const reservePlate = extractReservePlate(justification, vehicle.plate);
+          if (reservePlate) {
+            const reserveHasRoute = routedPlates.has(reservePlate);
+            if (!reserveHasRoute) {
+              // Reserve car plate did NOT have a route in system -> ERROR
+              errors.push({
+                plate: vehicle.plate,
+                svc: vehicle.svc_id,
+                reason: `Carro reserva (${reservePlate}) não teve rota identificada no sistema`
+              });
+            } else {
+              console.log(`[Alerta WhatsApp] Veículo ${vehicle.plate} (Carro Reserva). Rota da placa reserva ${reservePlate} CONFIRMADA com sucesso! (Válido)`);
+            }
+          } else {
+            // Reserve plate not provided -> ERROR
+            errors.push({
+              plate: vehicle.plate,
+              svc: vehicle.svc_id,
+              reason: 'Carro reserva sem placa do reserva informada'
+            });
+          }
+        }
+      } else {
         // Error: No justification filled
         errors.push({ plate: vehicle.plate, svc: vehicle.svc_id, reason: 'Sem justificativa preenchida' });
       }
@@ -374,6 +414,7 @@ async function checkAndAlertFillingErrors(targetDate) {
       errors.push({ plate, svc: svcId, reason: justification });
     }
   }
+
 
   console.log(`[Alerta WhatsApp] Encontrados ${errors.length} erros de preenchimento.`);
 
