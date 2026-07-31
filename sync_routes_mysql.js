@@ -291,6 +291,50 @@ async function checkAndAlertFillingErrors(targetDate) {
 
   console.log(`[Alerta WhatsApp] Todos os dispatchers preencheram para o dia ${targetDate}! Analisando erros de preenchimento...`);
 
+  // Send standalone Preenchimento Concluído message to VITE_WHATSAPP_DEFAULT_RECIPIENT (general group)
+  const defaultRecipient = process.env.VITE_WHATSAPP_DEFAULT_RECIPIENT || '120363400557269347@g.us';
+  const defaultOpts = {
+    url: process.env.VITE_EVOLUTION_API_URL,
+    key: process.env.VITE_EVOLUTION_API_KEY,
+    instance: process.env.VITE_EVOLUTION_INSTANCE,
+    recipient: defaultRecipient
+  };
+
+  if (defaultOpts.url && defaultOpts.key && defaultOpts.instance && defaultOpts.recipient) {
+    const dateFormatted = targetDate.split('-').reverse().join('/');
+    const completionMsg = `✅ *Preenchimento Concluído!* Todos os dispatchers responderam aos relatórios para a data ${dateFormatted}.`;
+    console.log(`[Alerta WhatsApp] Enviando confirmação de conclusão para o grupo geral ${defaultOpts.recipient}...`);
+    try {
+      let number = defaultOpts.recipient.trim();
+      if (!number.includes('@')) {
+        number = number.replace(/\D/g, '');
+      }
+
+      const res = await fetch(`${defaultOpts.url}/message/sendText/${defaultOpts.instance}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': defaultOpts.key
+        },
+        body: JSON.stringify({
+          number: number,
+          text: completionMsg,
+          delay: 1200,
+          linkPreview: true
+        })
+      });
+
+      if (res.ok) {
+        console.log(`[Alerta WhatsApp] Confirmação de conclusão enviada com sucesso no grupo geral.`);
+      } else {
+        const errText = await res.text();
+        console.error(`[Alerta WhatsApp] Erro ao enviar confirmação no grupo geral (status ${res.status}):`, errText);
+      }
+    } catch (err) {
+      console.error(`[Alerta WhatsApp] Falha ao enviar confirmação no grupo geral:`, err.message);
+    }
+  }
+
   // 3. Calculate errors:
   // - Fetch all active fixed fleet vehicles
   const { data: fixedVehicles, error: fixedVehError } = await supabase
@@ -446,8 +490,8 @@ async function checkAndAlertFillingErrors(targetDate) {
     };
 
     const dateFormatted = targetDate.split('-').reverse().join('/');
-    let msg = `Verificação de placas sem rota - ${dateFormatted}\n\n`;
-    msg += `Atenção: As placas abaixo estão justificadas como "RODOU", mas não tiveram rotas identificadas no sistema, ou estão sem justificativa preenchida:\n\n`;
+    let msg = `⚠️ *Atenção: Divergências de Preenchimento - ${dateFormatted}*\n\n`;
+    msg += `As placas abaixo estão justificadas como "RODOU", mas não tiveram rotas identificadas no sistema, ou estão sem justificativa preenchida:\n\n`;
 
     const byRegional = {};
     Object.keys(errorsBySvc).forEach(svcId => {
@@ -534,6 +578,8 @@ async function checkAndAlertFillingErrors(targetDate) {
 
     console.log(`[Alerta WhatsApp] Encontrados ${semDriverPlates.length} veículos sem driver.`);
 
+    const dateFormatted = targetDate.split('-').reverse().join('/');
+
     if (semDriverPlates.length > 0) {
       // Fetch SVC names
       const { data: svcs, error: svcsError } = await supabase
@@ -561,7 +607,6 @@ async function checkAndAlertFillingErrors(targetDate) {
         "Regional 3": ["SSP10", "SSP12", "SSP22", "SSP26", "SSP28", "SSP31", "SSP4"]
       };
 
-      const dateFormatted = targetDate.split('-').reverse().join('/');
       let msg = `🚗 *Veículos Sem Driver - ${dateFormatted}*\n\n`;
       msg += `Todos os relatórios foram preenchidos sem divergências! Segue a lista de veículos parados por motivo de "Sem Driver":\n\n`;
 
@@ -584,7 +629,7 @@ async function checkAndAlertFillingErrors(targetDate) {
         msg += '\n';
       });
 
-      const semDriverRecipient = process.env.VITE_WHATSAPP_SEM_DRIVER_RECIPIENT || '120363333587397484@g.us';
+      const semDriverRecipient = process.env.VITE_WHATSAPP_SEM_DRIVER_RECIPIENT || '5515996813326';
       
       const apiOpts = {
         url: process.env.VITE_EVOLUTION_API_URL,
@@ -623,6 +668,50 @@ async function checkAndAlertFillingErrors(targetDate) {
           }
         } catch (sendErr) {
           console.error(`[Alerta WhatsApp] Falha na requisição da Evolution API (sem driver):`, sendErr.message);
+        }
+      }
+    } else {
+      // errors.length === 0 AND semDriverPlates.length === 0
+      // Send a simple completion message to the group
+      const errorsRecipient = process.env.VITE_WHATSAPP_ERRORS_RECIPIENT || '120363333587397484@g.us';
+      const apiOpts = {
+        url: process.env.VITE_EVOLUTION_API_URL,
+        key: process.env.VITE_EVOLUTION_API_KEY,
+        instance: process.env.VITE_EVOLUTION_INSTANCE,
+        recipient: errorsRecipient
+      };
+
+      if (apiOpts.url && apiOpts.key && apiOpts.instance && apiOpts.recipient) {
+        const cleanMsg = `✅ *Preenchimento Concluído!* Todos os dispatchers responderam aos relatórios para a data ${dateFormatted} sem nenhuma divergência ou ocorrência de Sem Driver.`;
+        console.log(`[Alerta WhatsApp] Enviando confirmação de conclusão limpa para o grupo ${apiOpts.recipient}...`);
+        try {
+          let number = apiOpts.recipient.trim();
+          if (!number.includes('@')) {
+            number = number.replace(/\D/g, '');
+          }
+
+          const res = await fetch(`${apiOpts.url}/message/sendText/${apiOpts.instance}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': apiOpts.key
+            },
+            body: JSON.stringify({
+              number: number,
+              text: cleanMsg,
+              delay: 1200,
+              linkPreview: true
+            })
+          });
+
+          if (res.ok) {
+            console.log(`[Alerta WhatsApp] Mensagem de conclusão limpa enviada com sucesso.`);
+          } else {
+            const errText = await res.text();
+            console.error(`[Alerta WhatsApp] Erro no envio de conclusão limpa (status ${res.status}):`, errText);
+          }
+        } catch (sendErr) {
+          console.error(`[Alerta WhatsApp] Falha na requisição da Evolution API (conclusão limpa):`, sendErr.message);
         }
       }
     }
