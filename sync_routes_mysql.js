@@ -245,8 +245,25 @@ async function checkAndAlertFillingErrors(targetDate) {
     console.error("Erro ao ler whatsapp_notified_dates.json:", e);
   }
 
+  // Verify lock row in Supabase daily_reports
+  try {
+    const { data: lockRow, error: lockError } = await supabase
+      .from('daily_reports')
+      .select('id')
+      .eq('date', targetDate)
+      .eq('svc_id', 'SYSTEM_NOTIFICATION_LOCK')
+      .limit(1);
+
+    if (lockRow && lockRow.length > 0) {
+      console.log(`[Alerta WhatsApp] Relatório de preenchimento para ${targetDate} já foi enviado anteriormente (travado no banco).`);
+      return;
+    }
+  } catch (err) {
+    console.error(`[Alerta WhatsApp] Erro ao verificar trava no Supabase:`, err.message);
+  }
+
   if (notifiedDates.includes(targetDate)) {
-    console.log(`[Alerta WhatsApp] Data ${targetDate} já notificada anteriormente. Pulando.`);
+    console.log(`[Alerta WhatsApp] Data ${targetDate} já notificada anteriormente (travado no arquivo local).`);
     return;
   }
 
@@ -546,9 +563,22 @@ async function checkAndAlertFillingErrors(targetDate) {
 
         if (res.ok) {
           console.log(`[Alerta WhatsApp] WhatsApp enviado com sucesso.`);
-          // Save to notified dates
+          // Save to notified dates (Supabase lock row)
+          await supabase
+            .from('daily_reports')
+            .insert({
+              date: targetDate,
+              svc_id: 'SYSTEM_NOTIFICATION_LOCK',
+              acceptance_type: 'SYSTEM_LOCK',
+              justifications: 'SENT'
+            });
+          console.log(`[Alerta WhatsApp] Trava de notificação salva no Supabase para ${targetDate}.`);
+
+          // Save locally as fallback
           notifiedDates.push(targetDate);
-          fs.writeFileSync(notifiedFilePath, JSON.stringify(notifiedDates, null, 2));
+          try {
+            fs.writeFileSync(notifiedFilePath, JSON.stringify(notifiedDates, null, 2));
+          } catch {}
         } else {
           const errText = await res.text();
           console.error(`[Alerta WhatsApp] Erro no envio do WhatsApp (status ${res.status}):`, errText);
@@ -716,8 +746,22 @@ async function checkAndAlertFillingErrors(targetDate) {
       }
     }
 
+    // Save to notified dates (Supabase lock row)
+    await supabase
+      .from('daily_reports')
+      .insert({
+        date: targetDate,
+        svc_id: 'SYSTEM_NOTIFICATION_LOCK',
+        acceptance_type: 'SYSTEM_LOCK',
+        justifications: 'SENT'
+      });
+    console.log(`[Alerta WhatsApp] Trava de notificação salva no Supabase para ${targetDate}.`);
+
+    // Save locally as fallback
     notifiedDates.push(targetDate);
-    fs.writeFileSync(notifiedFilePath, JSON.stringify(notifiedDates, null, 2));
+    try {
+      fs.writeFileSync(notifiedFilePath, JSON.stringify(notifiedDates, null, 2));
+    } catch {}
   }
 }
 
