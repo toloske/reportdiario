@@ -45,6 +45,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [loading, setLoading] = useState(false);
   const [sendingWhatsapp, setSendingWhatsapp] = useState(false);
   const [corteWhatsappLoading, setCorteWhatsappLoading] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
 
   const handleSendWhatsapp = async (message: string, recipient?: string) => {
     setSendingWhatsapp(true);
@@ -156,7 +157,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     // If customDate is passed as empty string, it means sync range (default range today/yesterday)
     const targetDate = customDate !== undefined ? customDate : dbSyncDate;
     try {
-      const url = targetDate ? `http://localhost:3001/sync?date=${targetDate}` : 'http://localhost:3001/sync';
+      const baseDaemonUrl = import.meta.env.VITE_SYNC_DAEMON_URL || 'http://localhost:3001';
+      const url = targetDate ? `${baseDaemonUrl}/sync?date=${targetDate}` : `${baseDaemonUrl}/sync`;
       const res = await fetch(url);
       if (!res.ok) {
         let errMessage = `Erro no servidor (${res.status})`;
@@ -170,6 +172,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       if (data.success) {
         setDbSyncSuccess(true);
         setDbSyncResult(data.stdout || '');
+        const now = new Date();
+        const formatted = now.toLocaleString('pt-BR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+        setLastSyncTime(formatted);
       } else {
         throw new Error(data.error || 'Erro desconhecido');
       }
@@ -460,6 +472,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         const fetchedReports = await getReportsByDate(selectedDate);
         setReports(fetchedReports);
       }
+
+      // Fetch latest sync time for selectedDate
+      try {
+        const { data: latestRoute, error: routeError } = await supabase
+          .from('daily_routes')
+          .select('created_at')
+          .eq('date', selectedDate)
+          .order('created_at', { ascending: false })
+          .limit(1);
+          
+        if (!routeError && latestRoute && latestRoute.length > 0 && latestRoute[0].created_at) {
+          const syncDate = new Date(latestRoute[0].created_at);
+          const formattedSyncTime = syncDate.toLocaleString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+          });
+          setLastSyncTime(formattedSyncTime);
+        } else {
+          setLastSyncTime(null);
+        }
+      } catch (e) {
+        console.error("Erro ao buscar horário de sincronização:", e);
+      }
+
       setLoading(false);
     };
     loadData();
@@ -2528,9 +2568,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               {activeTab === 'reports' && <><span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-[20px]">description</span> Central de Relatórios</>}
             </h1>
           </div>
-          <button onClick={onBack} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full dark:bg-slate-800 transition-colors">
-            <span className="material-symbols-outlined text-[18px]">close</span>
-          </button>
+          <div className="flex items-center gap-4">
+            {lastSyncTime && (
+              <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200/50 dark:border-slate-800">
+                <span className="material-symbols-outlined text-[14px] text-emerald-500 animate-pulse">sync</span>
+                Última sincronização: {lastSyncTime}
+              </span>
+            )}
+            <button onClick={onBack} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full dark:bg-slate-800 transition-colors">
+              <span className="material-symbols-outlined text-[18px]">close</span>
+            </button>
+          </div>
         </header>
 
         {/* Content body wrapper */}

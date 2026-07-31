@@ -4,7 +4,7 @@ import { createServer } from 'http';
 
 const execPromise = promisify(exec);
 const INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 async function runSync(dateParam = '') {
   console.log(`[${new Date().toLocaleString()}] Iniciando sync...`);
