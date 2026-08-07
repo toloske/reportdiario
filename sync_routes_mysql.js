@@ -157,7 +157,11 @@ async function run() {
             plate: cleanedPlate,
             driver_id: getVal(row.Motorista) || getVal(row.ID_Motorista) || getVal(row.CPF_Motorista),
             vehicle_type: getVal(row.Tipo_Veiculo),
-            svc_id: getVal(row.Service),
+            svc_id: (() => {
+              const s = getVal(row.Service);
+              if (s === 'SSP49' || s === 'SSP57') return 'SSP40';
+              return s;
+            })(),
             xpt: getVal(row.XPT),
             mlp: getVal(row.Tipo),
             regional: getVal(row.XPT_Cidade || row.Service_Cidade),
@@ -281,7 +285,14 @@ async function checkAndAlertFillingErrors(targetDate) {
     return;
   }
 
-  const expectedSvcIds = Array.from(new Set(mlVehicles.map(v => v.svc_id))).filter(id => id && id !== 'FIRST MILE');
+  const expectedSvcIds = Array.from(
+    new Set(
+      mlVehicles.map(v => {
+        if (v.svc_id === 'SSP49' || v.svc_id === 'SSP57') return 'SSP40';
+        return v.svc_id;
+      })
+    )
+  ).filter(id => id && id !== 'FIRST MILE');
   console.log(`[Alerta WhatsApp] Esperando relatórios de ${expectedSvcIds.length} SVCs: [${expectedSvcIds.join(', ')}]`);
 
   // 2. Fetch submitted reports for targetDate
@@ -366,7 +377,14 @@ async function checkAndAlertFillingErrors(targetDate) {
   }
 
   // Filter fixed vehicles that are in our expected SVCs, excluding XPT since we have no vision of their routes
-  const relevantVehicles = fixedVehicles.filter(v => expectedSvcIds.includes(v.svc_id) && v.svc_id !== 'XPT');
+  const relevantVehicles = fixedVehicles
+    .map(v => {
+      if (v.svc_id === 'SSP49' || v.svc_id === 'SSP57') {
+        return { ...v, svc_id: 'SSP40' };
+      }
+      return v;
+    })
+    .filter(v => expectedSvcIds.includes(v.svc_id) && v.svc_id !== 'XPT');
 
   // Parse submitted justifications: map plate -> justification
   const justificationsMap = {};
@@ -502,7 +520,7 @@ async function checkAndAlertFillingErrors(targetDate) {
     // Regionals mapping
     const MAPEAMENTO_REGIONAIS = {
       "Regional 1": ["SSP20", "SSP27", "SSP36", "XPT", "SSP3", "SSP37", "SSP38", "SSP9", "SSP29"],
-      "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP49", "SSP57", "SSP7", "SSP8", "SSP18", "SSP25"],
+      "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP7", "SSP8", "SSP18", "SSP25"],
       "Regional 3": ["SSP10", "SSP12", "SSP22", "SSP26", "SSP28", "SSP31", "SSP4"]
     };
 
@@ -633,7 +651,7 @@ async function checkAndAlertFillingErrors(targetDate) {
       // Regionals mapping
       const MAPEAMENTO_REGIONAIS = {
         "Regional 1": ["SSP20", "SSP27", "SSP36", "XPT", "SSP3", "SSP37", "SSP38", "SSP9", "SSP29"],
-        "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP49", "SSP57", "SSP7", "SSP8", "SSP18", "SSP25"],
+        "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP7", "SSP8", "SSP18", "SSP25"],
         "Regional 3": ["SSP10", "SSP12", "SSP22", "SSP26", "SSP28", "SSP31", "SSP4"]
       };
 
@@ -799,7 +817,7 @@ async function checkAndSendCorteSummary(targetDate, forceSend = false) {
 
   const MAPEAMENTO_REGIONAIS = {
     "Regional 1": ["SSP20", "SSP27", "SSP36", "XPT", "SSP3", "SSP37", "SSP38", "SSP9", "SSP29"],
-    "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP49", "SSP57", "SSP7", "SSP8", "SSP18", "SSP25"],
+    "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP7", "SSP8", "SSP18", "SSP25"],
     "Regional 3": ["SSP10", "SSP12", "SSP22", "SSP26", "SSP28", "SSP31", "SSP4"]
   };
 
@@ -807,7 +825,7 @@ async function checkAndSendCorteSummary(targetDate, forceSend = false) {
   const svcNamesMap = {};
   if (svcs) svcs.forEach(s => { svcNamesMap[s.id] = s.name; });
 
-  const { data: vehicles, error: vehErr } = await supabase
+  const { data: rawVehicles, error: vehErr } = await supabase
     .from('vehicles')
     .select('plate, fleet_type, svc_id')
     .eq('active', true);
@@ -816,6 +834,13 @@ async function checkAndSendCorteSummary(targetDate, forceSend = false) {
     console.error("[Corte 06:00 WhatsApp] Erro ao buscar veículos:", vehErr.message);
     return;
   }
+
+  const vehicles = (rawVehicles || []).map(v => {
+    if (v.svc_id === 'SSP49' || v.svc_id === 'SSP57') {
+      return { ...v, svc_id: 'SSP40' };
+    }
+    return v;
+  });
 
   const { data: routes, error: rErr } = await supabase
     .from('daily_routes')

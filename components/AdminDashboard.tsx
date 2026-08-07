@@ -11,7 +11,7 @@ import Papa from 'papaparse';
 
 const MAPEAMENTO_REGIONAIS: Record<string, string[]> = {
     "Regional 1": ["SSP20", "SSP27", "SSP36", "XPT", "SSP3", "SSP37", "SSP38", "SSP9", "SSP29"],
-    "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP49", "SSP57", "SSP7", "SSP8", "SSP18", "SSP25"],
+    "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP7", "SSP8", "SSP18", "SSP25"],
     "Regional 3": ["SSP10", "SSP12", "SSP22", "SSP26", "SSP28", "SSP31", "SSP4"]
 };
 
@@ -465,7 +465,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         .select('svc_id')
         .eq('operation', 'Mercado Livre');
 
-      const uniqueMlSvcIds = Array.from(new Set(mlVehicles?.map(v => v.svc_id) || []));
+      const uniqueMlSvcIds = Array.from(new Set((mlVehicles || []).map(v => {
+        if (v.svc_id === 'SSP49' || v.svc_id === 'SSP57') return 'SSP40';
+        return v.svc_id;
+      })));
       setMercadoLivreSvcs(uniqueMlSvcIds);
 
       if (activeTab === 'daily') {
@@ -640,9 +643,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         // --- DETAILED PLATE-BY-PLATE LOGIC ---
         const routesByDateAndPlate: Record<string, boolean> = {};
         const routeSvcByDateAndPlate: Record<string, string> = {};
+        const routeDetailsByDateAndPlate: Record<string, { routeId: string, date: string }> = {};
         fetchedRoutes.forEach(r => {
             routesByDateAndPlate[`${r.date}|${r.plate}`] = true;
             routeSvcByDateAndPlate[`${r.date}|${r.plate}`] = r.xpt?.toUpperCase() === 'ESP8' ? 'XPT' : (r.svc_id || '');
+            routeDetailsByDateAndPlate[`${r.date}|${r.plate}`] = { routeId: r.route_id, date: r.date };
         });
 
         const reportCache: Record<string, {reason: string, reportId: string, fullJustifications: string, svc_id: string, supervisorStatus?: boolean}> = {};
@@ -767,6 +772,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                         previousJustification = prevDidRun ? 'RODOU (Identificado via Rota)' : 'Sem registro anterior';
                     }
 
+                    const routeDetail = routeDetailsByDateAndPlate[`${date}|${plate}`];
+                    const routeId = routeDetail ? routeDetail.routeId : null;
+                    const routeDate = routeDetail ? routeDetail.date : null;
+
                     detailedData.push({
                         date,
                         svc,
@@ -778,7 +787,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                         supervisorStatus,
                         fullSupervisorStatuses,
                         fleetType,
-                        previousJustification
+                        previousJustification,
+                        routeId,
+                        routeDate
                     });
                 });
             }
@@ -4589,9 +4600,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
              };
              
              const handleExportDetailedPlate = () => {
-                const rows = [["Data", "SVC", "Placa", "Frota", "Carregou (1=Sim/0=Nao)", "Justificativa Ontem", "Justificativa", "Validação Supervisor"]];
+                const rows = [["Data", "SVC", "Placa", "Frota", "Carregou (1=Sim/0=Nao)", "Justificativa", "Validação Supervisor"]];
                 finalDisplayedDetails.forEach(d => {
-                   rows.push([d.date.split('-').reverse().join('/'), d.svc, d.plate, d.fleetType, d.didRun ? '1' : '0', d.previousJustification || 'Sem registro', d.reason, d.supervisorStatus ? 'Validado' : 'Não Validado']);
+                   const statusText = d.didRun ? (d.routeId ? `1 (Rota: ${d.routeDate.split('-').reverse().slice(0, 2).join('/')} - ${d.routeId})` : '1') : '0';
+                   rows.push([d.date.split('-').reverse().join('/'), d.svc, d.plate, d.fleetType, statusText, d.reason, d.supervisorStatus ? 'Validado' : 'Não Validado']);
                 });
                 const csvContent = rows.map(r => r.join(";")).join("\n");
                 const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -4941,33 +4953,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                    <table className="w-full text-sm text-left relative">
                      <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0 z-10 shadow-sm select-none">
                        <tr>
-                         <th className="px-5 py-4 w-1/7 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('date')}>
-                           <div className="flex items-center gap-1">Data {detSortConfig?.key === 'date' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
-                         </th>
-                         <th className="px-5 py-4 w-1/7 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('svc')}>
-                           <div className="flex items-center gap-1">SVC {detSortConfig?.key === 'svc' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
-                         </th>
-                         <th className="px-5 py-4 w-1/7 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('plate')}>
-                           <div className="flex items-center gap-1">Placa {detSortConfig?.key === 'plate' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
-                         </th>
-                         <th className="px-5 py-4 w-1/7 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('fleetType')}>
-                           <div className="flex items-center gap-1">Frota {detSortConfig?.key === 'fleetType' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
-                         </th>
-                         <th className="px-5 py-4 w-1/7 text-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('didRun')}>
-                           <div className="flex items-center justify-center gap-1">Status (Carregou) {detSortConfig?.key === 'didRun' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
-                         </th>
-                         <th className="px-5 py-4 w-1/7 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('previousJustification')}>
-                           <div className="flex items-center gap-1">Ontem {detSortConfig?.key === 'previousJustification' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
-                         </th>
-                         <th className="px-5 py-4 w-1/7 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('reason')}>
-                           <div className="flex items-center gap-1">Justificativa Reportada {detSortConfig?.key === 'reason' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
-                         </th>
+                         <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('date')}>
+                            <div className="flex items-center gap-1">Data {detSortConfig?.key === 'date' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                          </th>
+                          <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('svc')}>
+                            <div className="flex items-center gap-1">SVC {detSortConfig?.key === 'svc' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                          </th>
+                          <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('plate')}>
+                            <div className="flex items-center gap-1">Placa {detSortConfig?.key === 'plate' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                          </th>
+                          <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('fleetType')}>
+                            <div className="flex items-center gap-1">Frota {detSortConfig?.key === 'fleetType' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                          </th>
+                          <th className="px-5 py-4 w-1/6 text-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('didRun')}>
+                            <div className="flex items-center justify-center gap-1">Status (Carregou) {detSortConfig?.key === 'didRun' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                          </th>
+                          <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('reason')}>
+                            <div className="flex items-center gap-1">Justificativa Reportada {detSortConfig?.key === 'reason' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                          </th>
                        </tr>
                      </thead>
                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                         {finalDisplayedDetails.length === 0 ? (
                            <tr>
-                              <td colSpan={7} className="px-5 py-12 text-center text-slate-400 font-medium dark:text-slate-400">Nenhum registro encontrado para os filtros aplicados.</td>
+                              <td colSpan={6} className="px-5 py-12 text-center text-slate-400 font-medium dark:text-slate-400">Nenhum registro encontrado para os filtros aplicados.</td>
                            </tr>
                         ) : (
                            finalDisplayedDetails.map((item, idx) => (
@@ -4989,9 +4998,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                  <td className="px-5 py-3.5"><span className={`text-[11px] font-bold px-2 py-1 rounded ${item.fleetType === 'Frota Fixa' ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'}`}>{item.fleetType}</span></td>
                                  <td className="px-5 py-3.5 text-center">
                                      {item.didRun ? (
-                                        <span className="px-2.5 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 shadow-sm border border-emerald-200 dark:border-emerald-800/50">
-                                            <span className="material-symbols-outlined text-[14px]">check_circle</span> Sim (1)
-                                        </span>
+                                        <div className="flex flex-col items-center gap-1">
+                                          <span className="px-2.5 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 shadow-sm border border-emerald-200 dark:border-emerald-800/50">
+                                              <span className="material-symbols-outlined text-[14px]">check_circle</span> Sim (1)
+                                          </span>
+                                          {item.routeId && (
+                                            <span className="text-[10px] font-mono font-semibold text-slate-500 dark:text-slate-400">
+                                              {item.routeDate ? item.routeDate.split('-').reverse().slice(0, 2).join('/') : ''} - {item.routeId}
+                                            </span>
+                                          )}
+                                        </div>
                                      ) : (
                                         <span className="px-2.5 py-1 bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 shadow-sm border border-rose-200 dark:border-rose-800/50">
                                             <span className="material-symbols-outlined text-[14px]">cancel</span> Não (0)

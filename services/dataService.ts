@@ -30,16 +30,33 @@ export const dataService = {
             console.error("Error fetching SVCs:", error);
             return [];
         }
-        return data || [];
+        const filtered = (data || []).filter(svc => svc.id !== 'SSP49' && svc.id !== 'SSP57');
+        return filtered.map(svc => {
+            if (svc.id === 'SSP40') {
+                return {
+                    ...svc,
+                    name: 'SSP40 / SSP49 / SSP57',
+                    city: 'Zona Norte'
+                };
+            }
+            return svc;
+        });
     },
 
     fetchVehiclesBySVC: async (svcId: string): Promise<Vehicle[]> => {
-        const { data, error } = await supabase
+        let query = supabase
             .from('vehicles')
             .select('*')
-            .eq('svc_id', svcId)
             .eq('active', true)
             .order('plate');
+
+        if (svcId === 'SSP40') {
+            query = query.in('svc_id', ['SSP40', 'SSP49', 'SSP57']);
+        } else {
+            query = query.eq('svc_id', svcId);
+        }
+
+        const { data, error } = await query;
 
         if (error) {
             console.error("Error fetching vehicles:", error);
@@ -68,7 +85,12 @@ export const dataService = {
             return [];
         }
 
-        return data || [];
+        return (data || []).map(v => {
+            if (v.svc_id === 'SSP49' || v.svc_id === 'SSP57') {
+                return { ...v, svc_id: 'SSP40' };
+            }
+            return v;
+        });
     },
 
     fetchPreviousJustifications: async (dateStr: string, svcId: string): Promise<Record<string, string>> => {
@@ -86,12 +108,19 @@ export const dataService = {
         const prevDay = String(d.getDate()).padStart(2, '0');
         const prevDateStr = `${prevYear}-${prevMonth}-${prevDay}`;
 
-        const { data, error } = await supabase
+        let query = supabase
             .from('daily_reports')
             .select('justifications')
             .eq('date', prevDateStr)
-            .eq('svc_id', svcId)
             .order('created_at', { ascending: false });
+
+        if (svcId === 'SSP40') {
+            query = query.in('svc_id', ['SSP40', 'SSP49', 'SSP57']);
+        } else {
+            query = query.eq('svc_id', svcId);
+        }
+
+        const { data, error } = await query;
 
         if (error || !data || data.length === 0) {
             return {};

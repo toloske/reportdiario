@@ -5,7 +5,7 @@ const GROUP_RECIPIENT = import.meta.env.VITE_WHATSAPP_GROUP_RECIPIENT || '120363
 
 const MAPEAMENTO_REGIONAIS: Record<string, string[]> = {
   "Regional 1": ["SSP20", "SSP27", "SSP36", "XPT", "SSP3", "SSP37", "SSP38", "SSP9", "SSP29"],
-  "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP49", "SSP57", "SSP7", "SSP8", "SSP18", "SSP25"],
+  "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP7", "SSP8", "SSP18", "SSP25"],
   "Regional 3": ["SSP10", "SSP12", "SSP22", "SSP26", "SSP28", "SSP31", "SSP4"]
 };
 
@@ -31,14 +31,21 @@ export const corteSummaryService = {
     }
 
     // 2. Fetch active vehicles
-    const { data: vehicles, error: vehErr } = await supabase
+    const { data: rawVehicles, error: vehErr } = await supabase
       .from('vehicles')
       .select('plate, fleet_type, svc_id')
       .eq('active', true);
 
-    if (vehErr || !vehicles) {
+    if (vehErr || !rawVehicles) {
       throw new Error(`Erro ao buscar veículos: ${vehErr?.message || 'Dados indisponíveis'}`);
     }
+
+    const vehicles = rawVehicles.map(v => {
+      if (v.svc_id === 'SSP49' || v.svc_id === 'SSP57') {
+        return { ...v, svc_id: 'SSP40' };
+      }
+      return v;
+    });
 
     // 3. Fetch routes for targetDate
     const { data: routes, error: rErr } = await supabase
