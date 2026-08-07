@@ -202,18 +202,21 @@ export const updateReportOffer = async (date: string, svc_id: string, modalKey: 
     .from('daily_reports')
     .select('id')
     .match({ date, svc_id })
-    .maybeSingle();
+    .order('created_at', { ascending: false })
+    .limit(1);
 
   if (fetchError) {
     console.error('Error fetching existing report:', fetchError);
     throw fetchError;
   }
 
-  if (existing) {
+  const existingRecord = existing && existing.length > 0 ? existing[0] : null;
+
+  if (existingRecord) {
     const { error } = await supabase
       .from('daily_reports')
       .update({ [modalKey]: newOffer })
-      .match({ date, svc_id });
+      .eq('id', existingRecord.id);
 
     if (error) {
       console.error('Error updating report offer:', error);
@@ -241,18 +244,21 @@ export const updateReportCapacity = async (date: string, svc_id: string, modalKe
     .from('daily_reports')
     .select('id')
     .match({ date, svc_id })
-    .maybeSingle();
+    .order('created_at', { ascending: false })
+    .limit(1);
 
   if (fetchError) {
     console.error('Error fetching existing report:', fetchError);
     throw fetchError;
   }
 
-  if (existing) {
+  const existingRecord = existing && existing.length > 0 ? existing[0] : null;
+
+  if (existingRecord) {
     const { error } = await supabase
       .from('daily_reports')
       .update({ [modalKey]: newCapacity })
-      .match({ date, svc_id });
+      .eq('id', existingRecord.id);
 
     if (error) {
       console.error('Error updating report capacity:', error);

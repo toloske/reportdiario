@@ -160,6 +160,32 @@ async function run() {
             svc_id: (() => {
               const s = getVal(row.Service);
               if (s === 'SSP49' || s === 'SSP57') return 'SSP40';
+              if (s.startsWith('SFC')) {
+                const city = getVal(row.Service_Cidade || row.XPT_Cidade).toUpperCase().trim();
+                if (city === 'ITUPEVA') return 'SSP38';
+                if (city === 'CAMPINAS') return 'SSP37';
+                if (city === 'SOROCABA') return 'SSP20';
+                if (city === 'PIRACICABA') return 'SSP36';
+                if (city === 'JUNDIAÍ' || city === 'JUNDIAI') return 'SSP18';
+                if (city === 'ATIBAIA') return 'SSP25';
+                if (city === 'MOGI MIRIM' || city === 'MOGI-MIRIM') return 'SSP29';
+                if (city === 'LIMEIRA') return 'SSP9';
+                if (city === 'SUZANO') return 'SSP23';
+                if (city === 'GUARULHOS') return 'SSP30';
+                if (city === 'COTIA') return 'SSP34';
+                if (city === 'LORENA') return 'SSP39';
+                if (city === 'CAÇAPAVA' || city === 'CACAPAVA') return 'SSP8';
+                if (city === 'ARAÇATUBA' || city === 'ARACATUBA') return 'SSP10';
+                if (city === 'SÃO JOSÉ DO RIO PRETO' || city === 'SAO JOSE DO RIO PRETO') return 'SSP12';
+                if (city === 'SÃO CARLOS' || city === 'SAO CARLOS') return 'SSP22';
+                if (city === 'FRANCA') return 'SSP26';
+                if (city === 'ITAPETININGA') return 'SSP27';
+                if (city === 'JALES') return 'SSP28';
+                if (city === 'BARRETOS') return 'SSP31';
+                if (city === 'CRAVINHOS') return 'SSP4';
+                if (city === 'ZONA NORTE') return 'SSP40';
+                if (city === 'ZONA OESTE') return 'SSP7';
+              }
               return s;
             })(),
             xpt: getVal(row.XPT),
