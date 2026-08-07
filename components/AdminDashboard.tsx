@@ -15,6 +15,40 @@ const MAPEAMENTO_REGIONAIS: Record<string, string[]> = {
     "Regional 3": ["SSP10", "SSP12", "SSP22", "SSP26", "SSP28", "SSP31", "SSP4"]
 };
 
+const mapSfcToSsp = (svc: string, city: string): string => {
+  const s = (svc || '').trim();
+  if (s.toUpperCase().startsWith('SFC')) {
+    const cleanCity = (city || '').toUpperCase().trim();
+    if (cleanCity === 'ITUPEVA') return 'SSP38';
+    if (cleanCity === 'CAMPINAS') return 'SSP37';
+    if (cleanCity === 'SOROCABA') return 'SSP20';
+    if (cleanCity === 'PIRACICABA') return 'SSP36';
+    if (cleanCity === 'JUNDIAÍ' || cleanCity === 'JUNDIAI') return 'SSP18';
+    if (cleanCity === 'ATIBAIA') return 'SSP25';
+    if (cleanCity === 'MOGI MIRIM' || cleanCity === 'MOGI-MIRIM') return 'SSP29';
+    if (cleanCity === 'LIMEIRA') return 'SSP9';
+    if (cleanCity === 'SUZANO') return 'SSP23';
+    if (cleanCity === 'GUARULHOS') return 'SSP30';
+    if (cleanCity === 'COTIA') return 'SSP34';
+    if (cleanCity === 'LORENA') return 'SSP39';
+    if (cleanCity === 'CAÇAPAVA' || cleanCity === 'CACAPAVA') return 'SSP8';
+    if (cleanCity === 'ARAÇATUBA' || cleanCity === 'ARACATUBA') return 'SSP10';
+    if (cleanCity === 'SÃO JOSÉ DO RIO PRETO' || cleanCity === 'SAO JOSE DO RIO PRETO') return 'SSP12';
+    if (cleanCity === 'SÃO CARLOS' || cleanCity === 'SAO CARLOS') return 'SSP22';
+    if (cleanCity === 'FRANCA') return 'SSP26';
+    if (cleanCity === 'ITAPETININGA') return 'SSP27';
+    if (cleanCity === 'JALES') return 'SSP28';
+    if (cleanCity === 'BARRETOS') return 'SSP31';
+    if (cleanCity === 'CRAVINHOS') return 'SSP4';
+    if (cleanCity === 'ZONA NORTE') return 'SSP40';
+    if (cleanCity === 'ZONA OESTE') return 'SSP7';
+    
+    // Fallback for SFC1 if city is not matching/empty
+    if (s === 'SFC1' || s.startsWith('SFC1')) return 'SSP38';
+  }
+  return s;
+};
+
 interface AdminDashboardProps {
   onBack: () => void;
 }
@@ -2185,11 +2219,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           }
 
           if (rawRouteId && rawPlate && formattedDate) {
+            const rawSvc = String(row['SVC'] || '').trim();
+            const city = String(row['Cidade Base'] || row['Regional'] || row['Cidade'] || '').trim();
             payloadToInsert.push({
                  route_id: String(rawRouteId).trim(),
                  date: formattedDate,
                  plate: String(rawPlate).replace(/[^A-Za-z0-9]/g, '').toUpperCase(),
-                 svc_id: String(row['SVC'] || '').trim(),
+                 svc_id: mapSfcToSsp(rawSvc, city),
                  vehicle_type: String(row['Tipo Veiculo'] || row['Veículo'] || row['Modal'] || '').trim(),
                  xpt: String(row['XPT'] || '').trim()
             });
@@ -2306,11 +2342,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           const formattedDate = parseDate(rawDateStr);
 
           if (rawPlate && formattedDate) {
+            const rawSvc = getCol(row, 'SVC', 'svc', 'svc_id');
+            const city = getCol(row, 'Cidade Base', 'Cidade', 'Regional', 'regional', 'cidade_base');
             payloadToInsert.push({
                  route_id: String(rawRouteId).trim(),
                  date: formattedDate,
                  plate: String(rawPlate).replace(/[^A-Za-z0-9]/g, '').toUpperCase(),
-                 svc_id: getCol(row, 'SVC', 'svc', 'svc_id'),
+                 svc_id: mapSfcToSsp(rawSvc, city),
                  vehicle_type: getCol(row, 'Veículo', 'Veiculo', 'Tipo Veiculo', 'Tipo Veículo', 'Modal', 'vehicle_type', 'tipo'),
                  xpt: getCol(row, 'XPT', 'xpt')
             });

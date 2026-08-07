@@ -185,6 +185,9 @@ async function run() {
                 if (city === 'CRAVINHOS') return 'SSP4';
                 if (city === 'ZONA NORTE') return 'SSP40';
                 if (city === 'ZONA OESTE') return 'SSP7';
+                
+                // Fallback for SFC1 if city is not matching/empty
+                if (s === 'SFC1' || s.startsWith('SFC1')) return 'SSP38';
               }
               return s;
             })(),
