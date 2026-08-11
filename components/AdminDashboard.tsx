@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import html2canvas from 'html2canvas';
 import { supabase } from '../services/supabaseClient';
 import { getReportsByDate, getReportsByDateRange, saveDailyRoutes, getDailyRoutesByDate, getDailyRoutesByDateRange, updateReportJustifications, updateReportSupervisorStatuses, updateReportOffer, updateReportCapacity } from '../services/storageService';
-import { dataService, SVC, Vehicle } from '../services/dataService';
+import { dataService, SVC, Vehicle, isVehicleActiveOnDate } from '../services/dataService';
 import { whatsappService } from '../services/whatsappService';
 import { corteSummaryService } from '../services/corteSummaryService';
 import { INITIAL_CATEGORIES, JUSTIFICATION_OPTIONS } from '../constants';
@@ -558,8 +558,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         const validFixedPlates = fixedVehicles
           .filter(v => validSvcIds.includes(v.svc_id))
           .map(v => v.plate);
-          
-        const totalFixedPlates = validFixedPlates.length;
 
         const grouped: Record<string, any[]> = {};
         fetchedReports.forEach(r => {
@@ -577,6 +575,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
         Object.keys(grouped).sort((a,b) => b.localeCompare(a)).forEach(date => {
           const dayReports = grouped[date];
+          const validFixedPlatesForDate = fixedVehicles
+            .filter(v => validSvcIds.includes(v.svc_id) && isVehicleActiveOnDate(v.plate, date))
+            .map(v => v.plate);
+          const totalFixedPlates = validFixedPlatesForDate.length;
+
           let maintenance = 0;
           let ran = 0;
           let dailyIdle = 0;
@@ -590,7 +593,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     const plate = match[1];
                     const reason = match[2];
                     
-                    if (validFixedPlates.includes(plate)) {
+                    if (validFixedPlatesForDate.includes(plate)) {
                         if (reason.toLowerCase().includes('manutenção')) {
                           maintenance++;
                         }
@@ -746,7 +749,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
         allDates.forEach(date => {
             if (date >= startDate && date <= endDate) {
                 const platesForDate = new Set<string>();
-                validFixedVehicles.forEach(v => platesForDate.add(v.plate));
+                validFixedVehicles.forEach(v => {
+                    if (isVehicleActiveOnDate(v.plate, date)) {
+                        platesForDate.add(v.plate);
+                    }
+                });
                 
                 Object.keys(routesByDateAndPlate).forEach(key => {
                     if (key.startsWith(`${date}|`)) platesForDate.add(key.split('|')[1]);
@@ -757,7 +764,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 });
 
                 platesForDate.forEach(plate => {
-                    const isFixed = validFixedPlatesSet.has(plate);
+                    const isFixed = validFixedPlatesSet.has(plate) && isVehicleActiveOnDate(plate, date);
                     const fleetType = isFixed ? 'Frota Fixa' : 'Próprio';
                     
                     let svc = '';
@@ -920,7 +927,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
              if (
                  (!weeklyRegionalFilter || MAPEAMENTO_REGIONAIS[weeklyRegionalFilter]?.includes(svc)) &&
                  (weeklySvcFilter === '' || svc === weeklySvcFilter)) {
-                 if (!validFixedPlates.includes(r.plate)) {
+                 const isFixedOnDate = validFixedPlates.includes(r.plate) && isVehicleActiveOnDate(r.plate, r.date);
+                 if (!isFixedOnDate) {
                      spotRanCounts[r.date] = (spotRanCounts[r.date] || 0) + 1;
                  }
              }
@@ -932,9 +940,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
              const rowDays: Record<string, any> = {};
              let daysRan = 0;
              let validDaysForPlate = 0;
+             let isDeactivatedBeforeRange = true;
 
              daysArray.forEach(day => {
                   const dStr = day.date;
+                  const isActive = isVehicleActiveOnDate(plate, dStr);
+                  if (isActive) isDeactivatedBeforeRange = false;
+
                   const didRun = routesByDateAndPlate[`${dStr}|${plate}`] || false;
                   const cacheEntry = reportCache[`${dStr}|${plate}`];
                   let reason = cacheEntry ? cacheEntry.reason : '';
@@ -943,19 +955,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                   else if (didRun && !reason.includes('RODOU')) reason = `[RODOU] ${reason}`;
 
                   if (didRun) daysRan++;
-                  if (didRun || reason) validDaysForPlate++; // Assume expected if reason exists or ran
+                  if (isActive && (didRun || reason)) validDaysForPlate++;
                   
-                  rowDays[dStr] = { didRun, reason };
+                  rowDays[dStr] = { didRun, reason, isDeactivated: !isActive };
              });
+
+             if (isDeactivatedBeforeRange) return;
+
+             const activeDaysCount = daysArray.filter(day => isVehicleActiveOnDate(plate, day.date)).length;
 
              plateRows.push({
                  plate,
                  svc: currentFixedVehicles.find(v => v.plate === plate)?.svc_id || '',
                  days: rowDays,
                  daysRan,
-                 validDaysForPlate, // Use this for a % util if desired, or assume 7.
-                 utilizationPuraPerc: (daysRan / 7) * 100,
-                 utilizationMeliPerc: ((daysRan * 1.162790698) / 7) * 100
+                 validDaysForPlate,
+                 utilizationPuraPerc: (daysRan / (activeDaysCount || 1)) * 100,
+                 utilizationMeliPerc: ((daysRan * 1.162790698) / (activeDaysCount || 1)) * 100
              });
         });
 
@@ -965,14 +981,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             const dStr = day.date;
             let fixedRan = 0;
             validFixedPlates.forEach(p => {
-               if (routesByDateAndPlate[`${dStr}|${p}`]) fixedRan++;
+               if (isVehicleActiveOnDate(p, dStr) && routesByDateAndPlate[`${dStr}|${p}`]) fixedRan++;
             });
             const spotRan = spotRanCounts[dStr] || 0;
             const spotOffer = spotDataByDate[dStr]?.offerSpot || 0;
+            const fixedTotalForDay = validFixedPlates.filter(p => isVehicleActiveOnDate(p, dStr)).length;
             
             newSummary[dStr] = {
                 fixedRan,
-                fixedTotal: validFixedPlates.length,
+                fixedTotal: fixedTotalForDay,
                 spotRan,
                 spotOffer
             };

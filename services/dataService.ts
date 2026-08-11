@@ -1,5 +1,6 @@
 
 import { supabase } from "./supabaseClient";
+import decommissionedVehicles from "../decommissioned_vehicles.json";
 
 export interface SVC {
     id: string;
@@ -18,6 +19,16 @@ export interface Vehicle {
     modal?: string;
     fleet_type?: string;
 }
+
+export const isVehicleActiveOnDate = (plate: string, dateStr?: string): boolean => {
+    if (!plate || !dateStr) return true;
+    const cleanPlate = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const deactDate = (decommissionedVehicles as Record<string, string>)[cleanPlate];
+    if (deactDate) {
+        return dateStr < deactDate;
+    }
+    return true;
+};
 
 export const dataService = {
     fetchSVCs: async (): Promise<SVC[]> => {
@@ -43,7 +54,7 @@ export const dataService = {
         });
     },
 
-    fetchVehiclesBySVC: async (svcId: string): Promise<Vehicle[]> => {
+    fetchVehiclesBySVC: async (svcId: string, dateStr?: string): Promise<Vehicle[]> => {
         let query = supabase
             .from('vehicles')
             .select('*')
@@ -63,7 +74,7 @@ export const dataService = {
             return [];
         }
 
-        return (data || []).map(v => ({
+        const mapped = (data || []).map(v => ({
             plate: v.plate,
             svc_id: v.svc_id,
             ranToday: true, // Default state for UI
@@ -71,9 +82,14 @@ export const dataService = {
             modal: v.modal,
             fleet_type: v.fleet_type
         }));
+
+        if (dateStr) {
+            return mapped.filter(v => isVehicleActiveOnDate(v.plate, dateStr));
+        }
+        return mapped;
     },
     
-    fetchFixedFleetVehicles: async (): Promise<Vehicle[]> => {
+    fetchFixedFleetVehicles: async (dateStr?: string): Promise<Vehicle[]> => {
         const { data, error } = await supabase
             .from('vehicles')
             .select('*')
@@ -85,12 +101,17 @@ export const dataService = {
             return [];
         }
 
-        return (data || []).map(v => {
+        const mapped = (data || []).map(v => {
             if (v.svc_id === 'SSP49' || v.svc_id === 'SSP57') {
                 return { ...v, svc_id: 'SSP40' };
             }
             return v;
         });
+
+        if (dateStr) {
+            return mapped.filter(v => isVehicleActiveOnDate(v.plate, dateStr));
+        }
+        return mapped;
     },
 
     fetchPreviousJustifications: async (dateStr: string, svcId: string): Promise<Record<string, string>> => {

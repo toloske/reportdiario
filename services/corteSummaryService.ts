@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient";
 import { whatsappService } from "./whatsappService";
+import { isVehicleActiveOnDate } from "./dataService";
 
 const GROUP_RECIPIENT = import.meta.env.VITE_WHATSAPP_GROUP_RECIPIENT || '120363284501155529@g.us';
 
@@ -40,12 +41,14 @@ export const corteSummaryService = {
       throw new Error(`Erro ao buscar veículos: ${vehErr?.message || 'Dados indisponíveis'}`);
     }
 
-    const vehicles = rawVehicles.map(v => {
-      if (v.svc_id === 'SSP49' || v.svc_id === 'SSP57') {
-        return { ...v, svc_id: 'SSP40' };
-      }
-      return v;
-    });
+    const vehicles = rawVehicles
+      .map(v => {
+        if (v.svc_id === 'SSP49' || v.svc_id === 'SSP57') {
+          return { ...v, svc_id: 'SSP40' };
+        }
+        return v;
+      })
+      .filter(v => isVehicleActiveOnDate(v.plate, targetDate));
 
     // 3. Fetch routes for targetDate
     const { data: routes, error: rErr } = await supabase

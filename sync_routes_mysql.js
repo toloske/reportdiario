@@ -49,6 +49,27 @@ function getVal(val) {
   return val === undefined || val === null ? '' : String(val).trim();
 }
 
+// Load Decommissioned Vehicles JSON
+let decommissionedVehicles = {};
+try {
+  const jsonPath = path.resolve('decommissioned_vehicles.json');
+  if (fs.existsSync(jsonPath)) {
+    decommissionedVehicles = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+  }
+} catch (e) {
+  console.error("Erro ao carregar decommissioned_vehicles.json:", e.message);
+}
+
+function isVehicleActiveOnDate(plate, dateStr) {
+  if (!plate || !dateStr) return true;
+  const cleanPlate = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const deactDate = decommissionedVehicles[cleanPlate];
+  if (deactDate) {
+    return dateStr < deactDate;
+  }
+  return true;
+}
+
 async function run() {
   console.log("=== INICIANDO SINCRONIZAÇÃO DE ROTAS (MYSQL -> SUPABASE) ===");
 
@@ -305,7 +326,7 @@ async function checkAndAlertFillingErrors(targetDate) {
   // 1. Fetch expected SVCs (SVCs with active vehicles having operation 'Mercado Livre')
   const { data: mlVehicles, error: mlVehError } = await supabase
     .from('vehicles')
-    .select('svc_id')
+    .select('plate, svc_id')
     .eq('active', true)
     .eq('operation', 'Mercado Livre');
 
@@ -314,9 +335,11 @@ async function checkAndAlertFillingErrors(targetDate) {
     return;
   }
 
+  const activeMlVehicles = (mlVehicles || []).filter(v => isVehicleActiveOnDate(v.plate, targetDate));
+
   const expectedSvcIds = Array.from(
     new Set(
-      mlVehicles.map(v => {
+      activeMlVehicles.map(v => {
         if (v.svc_id === 'SSP49' || v.svc_id === 'SSP57') return 'SSP40';
         return v.svc_id;
       })
@@ -413,7 +436,7 @@ async function checkAndAlertFillingErrors(targetDate) {
       }
       return v;
     })
-    .filter(v => expectedSvcIds.includes(v.svc_id) && v.svc_id !== 'XPT');
+    .filter(v => expectedSvcIds.includes(v.svc_id) && v.svc_id !== 'XPT' && isVehicleActiveOnDate(v.plate, targetDate));
 
   // Parse submitted justifications: map plate -> justification
   const justificationsMap = {};
@@ -864,12 +887,14 @@ async function checkAndSendCorteSummary(targetDate, forceSend = false) {
     return;
   }
 
-  const vehicles = (rawVehicles || []).map(v => {
-    if (v.svc_id === 'SSP49' || v.svc_id === 'SSP57') {
-      return { ...v, svc_id: 'SSP40' };
-    }
-    return v;
-  });
+  const vehicles = (rawVehicles || [])
+    .map(v => {
+      if (v.svc_id === 'SSP49' || v.svc_id === 'SSP57') {
+        return { ...v, svc_id: 'SSP40' };
+      }
+      return v;
+    })
+    .filter(v => isVehicleActiveOnDate(v.plate, targetDate));
 
   const { data: routes, error: rErr } = await supabase
     .from('daily_routes')

@@ -62,7 +62,7 @@ const App: React.FC = () => {
 
       try {
         const [vehicles, prevJustifications, routedPlates] = await Promise.all([
-          dataService.fetchVehiclesBySVC(formData.svc),
+          dataService.fetchVehiclesBySVC(formData.svc, formData.date),
           dataService.fetchPreviousJustifications(formData.date, formData.svc),
           dataService.fetchRoutedPlatesByDate(formData.date)
         ]);
