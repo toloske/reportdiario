@@ -123,7 +123,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   };
 
   
-  const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'|'director'|'summary'|'efficiency'|'reports'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily'|'utilization'|'audit'|'director'|'summary'|'efficiency'|'reports'|'vehicles'>('daily');
   const [startDate, setStartDate] = useState<string>(
     getLocalDateString(new Date(new Date().setDate(new Date().getDate() - 7)))
   );
@@ -322,6 +322,139 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       handleGenerateCustomReport();
     }
   }, [activeTab]);
+
+  // States for Fleet Management Tab
+  const [fleetVehicles, setFleetVehicles] = useState<any[]>([]);
+  const [fleetSearch, setFleetSearch] = useState('');
+  const [fleetSvcFilter, setFleetSvcFilter] = useState('');
+  const [fleetActiveFilter, setFleetActiveFilter] = useState<'all'|'active'|'inactive'>('all');
+  const [loadingFleet, setLoadingFleet] = useState(false);
+  const [newPlate, setNewPlate] = useState('');
+  const [newSvc, setNewSvc] = useState('');
+  const [newFleetType, setNewFleetType] = useState('FROTA FIXA');
+  const [newModalVal, setNewModalVal] = useState('VUC');
+  const [newOperation, setNewOperation] = useState('Mercado Livre');
+
+  const loadFleetVehicles = async () => {
+    setLoadingFleet(true);
+    try {
+      const { data, error } = await supabase
+        .from('vehicles')
+        .select('*')
+        .order('plate');
+      if (error) throw error;
+      setFleetVehicles(data || []);
+    } catch (e: any) {
+      console.error(e);
+      alert("Erro ao buscar veículos da frota: " + e.message);
+    } finally {
+      setLoadingFleet(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'vehicles') {
+      loadFleetVehicles();
+    }
+  }, [activeTab]);
+
+  const handleAllocateVehicle = async (plate: string, newSvcId: string) => {
+    const { error } = await supabase
+      .from('vehicles')
+      .update({ svc_id: newSvcId })
+      .eq('plate', plate);
+    if (error) {
+      alert("Erro ao alocar veículo: " + error.message);
+    } else {
+      setFleetVehicles(prev => prev.map(v => v.plate === plate ? { ...v, svc_id: newSvcId } : v));
+      setFixedVehicles(prev => prev.map(v => v.plate === plate ? { ...v, svc_id: newSvcId } : v));
+    }
+  };
+
+  const handleToggleActiveVehicle = async (plate: string, currentActive: boolean) => {
+    const { error } = await supabase
+      .from('vehicles')
+      .update({ active: !currentActive })
+      .eq('plate', plate);
+    if (error) {
+      alert("Erro ao alterar status: " + error.message);
+    } else {
+      setFleetVehicles(prev => prev.map(v => v.plate === plate ? { ...v, active: !currentActive } : v));
+      setFixedVehicles(prev => prev.map(v => v.plate === plate ? { ...v, active: !currentActive } : v));
+    }
+  };
+
+  const handleFleetTypeChange = async (plate: string, newType: string) => {
+    const { error } = await supabase
+      .from('vehicles')
+      .update({ fleet_type: newType })
+      .eq('plate', plate);
+    if (error) {
+      alert("Erro ao alterar tipo de frota: " + error.message);
+    } else {
+      setFleetVehicles(prev => prev.map(v => v.plate === plate ? { ...v, fleet_type: newType } : v));
+      setFixedVehicles(prev => prev.map(v => v.plate === plate ? { ...v, fleet_type: newType } : v));
+    }
+  };
+
+  const handleModalChange = async (plate: string, newModal: string) => {
+    const { error } = await supabase
+      .from('vehicles')
+      .update({ modal: newModal })
+      .eq('plate', plate);
+    if (error) {
+      alert("Erro ao alterar modal: " + error.message);
+    } else {
+      setFleetVehicles(prev => prev.map(v => v.plate === plate ? { ...v, modal: newModal } : v));
+      setFixedVehicles(prev => prev.map(v => v.plate === plate ? { ...v, modal: newModal } : v));
+    }
+  };
+
+  const handleAddVehicle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPlate.trim()) {
+      alert("Informe a placa.");
+      return;
+    }
+    const cleanPlate = newPlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (cleanPlate.length !== 7) {
+      alert("Placa inválida. Deve conter exatamente 7 caracteres alfanuméricos.");
+      return;
+    }
+    if (!newSvc) {
+      alert("Selecione a base (SVC).");
+      return;
+    }
+
+    if (fleetVehicles.some(v => v.plate === cleanPlate)) {
+      alert("Veículo com esta placa já cadastrado.");
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('vehicles')
+        .insert([{
+          plate: cleanPlate,
+          svc_id: newSvc,
+          fleet_type: newFleetType,
+          modal: newModalVal,
+          operation: newOperation,
+          active: true
+        }])
+        .select();
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setFleetVehicles(prev => [data[0], ...prev]);
+        setNewPlate('');
+        alert("Veículo cadastrado com sucesso!");
+      }
+    } catch (e: any) {
+      alert("Erro ao cadastrar veículo: " + e.message);
+    }
+  };
 
   const handleTabChange = (tab: any) => {
     setActiveTab(tab);
@@ -2575,6 +2708,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">Ações & Dados</p>
               <div className="space-y-1.5">
                 <button
+                  onClick={() => handleTabChange('vehicles')}
+                  className={`w-full px-4 py-3 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center gap-3 ${activeTab === 'vehicles' ? 'bg-white/10 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
+                >
+                  <span className="material-symbols-outlined text-[18px]">local_shipping</span>
+                  GESTÃO DE FROTA
+                </button>
+                <button
                   onClick={() => handleTabChange('audit')}
                   className={`w-full px-4 py-3 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center gap-3 ${activeTab === 'audit' ? 'bg-white/10 text-white shadow-md' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
                 >
@@ -2632,6 +2772,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               {activeTab === 'efficiency' && <><span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-[20px]">speed</span> Eficiência de Frota</>}
               {activeTab === 'audit' && <><span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-[20px]">upload_file</span> Importar Planilhas</>}
               {activeTab === 'reports' && <><span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-[20px]">description</span> Central de Relatórios</>}
+              {activeTab === 'vehicles' && <><span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-[20px]">local_shipping</span> Gestão de Frota</>}
             </h1>
           </div>
           <div className="flex items-center gap-4">
@@ -4169,6 +4310,221 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 );
               })()}
             </>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'vehicles' && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl p-6 md:p-10 animate-fade-in w-full overflow-hidden space-y-8">
+          
+          {/* Header */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+              <span className="material-symbols-outlined text-white">local_shipping</span>
+            </div>
+            <div>
+              <h2 className="text-xl md:text-2xl font-bold text-slate-800 dark:text-white">Gestão de Veículos</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Cadastre veículos e gerencie a alocação de bases (SVCs) da frota operacional</p>
+            </div>
+          </div>
+
+          {/* Form to Add New Vehicle */}
+          <form onSubmit={handleAddVehicle} className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 p-6 rounded-2xl space-y-4">
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px]">add_circle</span>
+              Cadastrar Novo Veículo
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Placa</label>
+                <input 
+                  type="text" 
+                  value={newPlate} 
+                  onChange={e => setNewPlate(e.target.value.toUpperCase().slice(0, 7))} 
+                  placeholder="Ex: ABC1D23"
+                  className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-bold uppercase text-slate-700 dark:text-slate-200 shadow-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Alocar Base (SVC)</label>
+                <select 
+                  value={newSvc} 
+                  onChange={e => setNewSvc(e.target.value)}
+                  className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm"
+                >
+                  <option value="">Selecione...</option>
+                  {svcs.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Tipo de Frota</label>
+                <select 
+                  value={newFleetType} 
+                  onChange={e => setNewFleetType(e.target.value)}
+                  className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm"
+                >
+                  <option value="FROTA FIXA">Frota Fixa</option>
+                  <option value="SPOT">Spot</option>
+                  <option value="FROTA PRÓPRIA">Frota Própria Transmaná</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Modal</label>
+                <select 
+                  value={newModalVal} 
+                  onChange={e => setNewModalVal(e.target.value)}
+                  className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-3 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm"
+                >
+                  {INITIAL_CATEGORIES.map(cat => (
+                    <option key={cat.id} value={cat.name}>{cat.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <button 
+                  type="submit" 
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 text-sm shadow-md transition-all active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-[18px]">save</span>
+                  Cadastrar
+                </button>
+              </div>
+            </div>
+          </form>
+
+          {/* Filters List */}
+          <div className="bg-slate-50 border border-slate-200 dark:bg-slate-800/40 dark:border-slate-700/50 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+            <div className="w-full md:w-1/3">
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Pesquisar Placa</label>
+              <input 
+                type="text" 
+                value={fleetSearch} 
+                onChange={e => setFleetSearch(e.target.value.toUpperCase())} 
+                placeholder="Pesquisar por placa..." 
+                className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-sm outline-none uppercase" 
+              />
+            </div>
+
+            <div className="w-full md:w-1/4">
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Filtrar por Base</label>
+              <select 
+                value={fleetSvcFilter} 
+                onChange={e => setFleetSvcFilter(e.target.value)} 
+                className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm"
+              >
+                <option value="">Todas as Bases</option>
+                {svcs.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="w-full md:w-1/4">
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Status de Atividade</label>
+              <select 
+                value={fleetActiveFilter} 
+                onChange={e => setFleetActiveFilter(e.target.value as any)} 
+                className="w-full rounded-xl border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 text-sm focus:ring-indigo-500/20 focus:border-indigo-500 font-medium text-slate-700 dark:text-slate-200 shadow-sm"
+              >
+                <option value="all">Todos</option>
+                <option value="active">Ativos</option>
+                <option value="inactive">Inativos</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Vehicles List Table */}
+          {loadingFleet ? (
+            <div className="flex flex-col items-center justify-center p-16 w-full">
+              <div className="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-600 rounded-full animate-spin"></div>
+              <p className="mt-4 text-slate-500 dark:text-slate-400 font-medium animate-pulse">Buscando cadastro de frotas...</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-xl shadow-inner bg-slate-50/50 dark:bg-slate-900/30">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs font-black uppercase tracking-wider">
+                  <tr>
+                    <th className="px-6 py-4">Placa</th>
+                    <th className="px-6 py-4">Base Operacional (SVC)</th>
+                    <th className="px-6 py-4">Tipo de Frota</th>
+                    <th className="px-6 py-4">Modal</th>
+                    <th className="px-6 py-4 text-center">Ativo</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {fleetVehicles
+                    .filter(v => {
+                      const matchesSearch = v.plate.toUpperCase().includes(fleetSearch.toUpperCase());
+                      const matchesSvc = !fleetSvcFilter || v.svc_id === fleetSvcFilter;
+                      const matchesActive = fleetActiveFilter === 'all' || 
+                        (fleetActiveFilter === 'active' && v.active === true) ||
+                        (fleetActiveFilter === 'inactive' && v.active === false);
+                      return matchesSearch && matchesSvc && matchesActive;
+                    })
+                    .slice(0, 150) // limit list for performance
+                    .map(v => (
+                      <tr key={v.plate} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                        <td className="px-6 py-3.5 font-mono font-bold text-slate-800 dark:text-slate-200">{v.plate}</td>
+                        
+                        <td className="px-6 py-3.5">
+                          <select 
+                            value={v.svc_id} 
+                            onChange={e => handleAllocateVehicle(v.plate, e.target.value)}
+                            className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 p-1.5 focus:ring-1 focus:ring-indigo-500"
+                          >
+                            {svcs.map(s => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
+                        </td>
+
+                        <td className="px-6 py-3.5">
+                          <select 
+                            value={v.fleet_type} 
+                            onChange={e => handleFleetTypeChange(v.plate, e.target.value)}
+                            className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 p-1.5 focus:ring-1 focus:ring-indigo-500"
+                          >
+                            <option value="FROTA FIXA">Frota Fixa</option>
+                            <option value="SPOT">Spot</option>
+                            <option value="FROTA PRÓPRIA">Frota Própria Transmaná</option>
+                          </select>
+                        </td>
+
+                        <td className="px-6 py-3.5">
+                          <select 
+                            value={v.modal} 
+                            onChange={e => handleModalChange(v.plate, e.target.value)}
+                            className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 p-1.5 focus:ring-1 focus:ring-indigo-500 max-w-[200px]"
+                          >
+                            {INITIAL_CATEGORIES.map(cat => (
+                              <option key={cat.id} value={cat.name}>{cat.name}</option>
+                            ))}
+                          </select>
+                        </td>
+
+                        <td className="px-6 py-3.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleActiveVehicle(v.plate, v.active)}
+                            className={`px-3 py-1 rounded-full text-xs font-black transition-all ${v.active ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400' : 'bg-rose-100 text-rose-800 dark:bg-rose-950/30 dark:text-rose-400'}`}
+                          >
+                            {v.active ? 'Ativo' : 'Inativo'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+              {fleetVehicles.length === 0 && (
+                <div className="p-8 text-center text-slate-400">Nenhum veículo encontrado no cadastro.</div>
+              )}
+            </div>
           )}
         </div>
       )}

@@ -41,7 +41,7 @@ export const dataService = {
             console.error("Error fetching SVCs:", error);
             return [];
         }
-        const filtered = (data || []).filter(svc => svc.id !== 'SSP49' && svc.id !== 'SSP57');
+        const filtered = (data || []).filter(svc => svc.id !== 'SSP49' && svc.id !== 'SSP57' && svc.id !== 'SSP18');
         return filtered.map(svc => {
             if (svc.id === 'SSP40') {
                 return {

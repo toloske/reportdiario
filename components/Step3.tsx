@@ -115,6 +115,31 @@ const Step3: React.FC<Step3Props> = ({ data, updateData, onBack, onSubmit, isSav
   };
 
   const handleFinishSubmit = () => {
+    // 1. Cross-validate Step 1 Spot/Frota Própria perdas math
+    for (const c of data.categories) {
+      const offer = c.offer || 0;
+      const capacity = c.capacity || 0;
+      const expectedPerdas = offer - capacity;
+      
+      const actualPerdas = (data.lostDrivers || []).filter(d => 
+        (d.fleetType === 'SPOT' || d.fleetType === 'FROTA PRÓPRIA') && 
+        d.modal === c.name
+      ).length;
+
+      if (expectedPerdas !== actualPerdas) {
+        alert(
+          `Divergência matemática detectada para o modal ${c.name}:\n\n` +
+          `• Oferta: ${offer}\n` +
+          `• Capacidade: ${capacity}\n` +
+          `• Perdas Esperadas: ${expectedPerdas} (Oferta - Capacidade)\n` +
+          `• Perdas Justificadas no Passo 3: ${actualPerdas}\n\n` +
+          `Por favor, adicione as placas perdidas correspondentes na lista abaixo ou retorne ao Passo 1 para corrigir a oferta/capacidade.`
+        );
+        return;
+      }
+    }
+
+    // 2. Original validations
     if (lostAny && (!data.lostDrivers || data.lostDrivers.length === 0)) {
       alert('Você selecionou que perdeu motorista. Por favor, adicione pelo menos um motorista à lista ou altere a opção para "Não".');
       return;

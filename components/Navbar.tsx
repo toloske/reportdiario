@@ -7,9 +7,11 @@ interface NavbarProps {
     onBack: () => void;
     onAdminClick: () => void;
     title: string;
+    loggedSvc?: any;
+    onLogout?: () => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ view, step, onBack, onAdminClick, title }) => {
+const Navbar: React.FC<NavbarProps> = ({ view, step, onBack, onAdminClick, title, loggedSvc, onLogout }) => {
     const [isDark, setIsDark] = useState(() => {
         if (typeof window !== 'undefined') {
             return document.documentElement.classList.contains('dark') || localStorage.getItem('theme') === 'dark';
@@ -48,6 +50,11 @@ const Navbar: React.FC<NavbarProps> = ({ view, step, onBack, onAdminClick, title
                             {!title.includes('Oferta') && (
                                 <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-primary to-blue-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">Transmaná</span>
                             )}
+                            {loggedSvc && (
+                                <span className="ml-1 px-2 py-0.5 bg-primary/10 text-primary dark:bg-blue-900/30 dark:text-blue-400 text-xs font-bold rounded-full animate-pulse">
+                                    {loggedSvc.id}
+                                </span>
+                            )}
                         </div>
                     )}
                 </div>
@@ -75,6 +82,15 @@ const Navbar: React.FC<NavbarProps> = ({ view, step, onBack, onAdminClick, title
                             title="Acesso Administrativo"
                         >
                             <span className="material-symbols-outlined text-[20px]">shield_person</span>
+                        </button>
+                    )}
+                    {loggedSvc && view === View.FORM && onLogout && (
+                        <button
+                            onClick={onLogout}
+                            className="p-2 rounded-full text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all duration-300"
+                            title="Sair da Conta (Logout)"
+                        >
+                            <span className="material-symbols-outlined text-[20px]">logout</span>
                         </button>
                     )}
                 </div>

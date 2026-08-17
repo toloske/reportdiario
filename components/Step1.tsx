@@ -14,6 +14,16 @@ const Step1: React.FC<Step1Props> = ({ data, updateData, onNext, svcOptions }) =
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const handleNext = () => {
+    // Validate that capacity <= offer for all categories
+    for (const c of data.categories) {
+      const offer = c.offer || 0;
+      const capacity = c.capacity || 0;
+      if (capacity > offer) {
+        alert(`Atenção: A capacidade do modal ${c.name} (${capacity}) não pode ser maior que a oferta (${offer}).`);
+        return;
+      }
+    }
+
     // Check if there are any non-zero/non-null offers or capacities entered
     const hasSpotOffers = data.categories.some(c => 
       (c.offer !== null && c.offer > 0) || 
@@ -72,20 +82,16 @@ const Step1: React.FC<Step1Props> = ({ data, updateData, onNext, svcOptions }) =
             </div>
           </label>
           <label className="block">
-            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">SVC Selector</span>
-            <select
-              className="custom-select w-full h-12 px-4 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all disabled:opacity-50"
-              value={data.svc}
-              onChange={(e) => updateData({ svc: e.target.value })}
-              disabled={svcOptions.length === 0}
-            >
-              <option value="">{svcOptions.length === 0 ? 'Carregando SVCs...' : 'Selecione o SVC'}</option>
-              {svcOptions.map(svc => (
-                <option key={svc.id} value={svc.id}>
-                  {svc.name} - {svc.city}
-                </option>
-              ))}
-            </select>
+            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">SVC da Base</span>
+            <input
+              type="text"
+              readOnly
+              className="w-full h-12 px-4 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-950 font-bold text-slate-500 dark:text-slate-400 outline-none"
+              value={(() => {
+                const svc = svcOptions.find(s => s.id === data.svc);
+                return svc ? `${svc.name} - ${svc.city}` : data.svc;
+              })()}
+            />
           </label>
         </div>
       </section>

@@ -11,6 +11,9 @@ import Navbar from './components/Navbar';
 import { saveReport } from './services/storageService';
 import { dataService, SVC } from './services/dataService';
 
+import Login from './components/Login';
+import D1Divergences from './components/D1Divergences';
+
 const App: React.FC = () => {
   const [view, setView] = useState<View>(View.FORM);
   const [step, setStep] = useState<Step>(Step.OFFER_CAPACITY);
@@ -18,6 +21,13 @@ const App: React.FC = () => {
 
   const [svcOptions, setSvcOptions] = useState<SVC[]>([]);
   const [loadingSvcs, setLoadingSvcs] = useState(true);
+
+  const [loggedSvc, setLoggedSvc] = useState<SVC | null>(() => {
+    const saved = localStorage.getItem('svc_login');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [hasD1Divergences, setHasD1Divergences] = useState(false);
 
   const getLocalDateString = () => {
     const d = new Date();
@@ -29,7 +39,7 @@ const App: React.FC = () => {
 
   const [formData, setFormData] = useState<FormData>({
     date: getLocalDateString(),
-    svc: '',
+    svc: loggedSvc ? loggedSvc.id : '',
     categories: INITIAL_CATEGORIES,
     vehicleStatuses: [],
     acceptanceType: 'D-1',
@@ -52,6 +62,16 @@ const App: React.FC = () => {
     loadSVCs();
   }, []);
 
+  // Update formData when loggedSvc changes
+  useEffect(() => {
+    if (loggedSvc) {
+      setFormData(prev => ({ ...prev, svc: loggedSvc.id }));
+      setHasD1Divergences(true); // check divergences for new base/date
+    } else {
+      setFormData(prev => ({ ...prev, svc: '' }));
+    }
+  }, [loggedSvc, formData.date]);
+
   // Fetch Vehicles when SVC or Date changes
   useEffect(() => {
     const loadVehicles = async () => {
@@ -62,7 +82,7 @@ const App: React.FC = () => {
 
       try {
         const [vehicles, prevJustifications, routedPlates] = await Promise.all([
-          dataService.fetchVehiclesBySVC(formData.svc, formData.date),
+          dataService.fetchVehiclesBySVC(formData.svc),
           dataService.fetchPreviousJustifications(formData.date, formData.svc),
           dataService.fetchRoutedPlatesByDate(formData.date)
         ]);
@@ -111,7 +131,10 @@ const App: React.FC = () => {
     }
   };
 
-  const handleReset = () => {
+  const handleLogout = () => {
+    localStorage.removeItem('svc_login');
+    setLoggedSvc(null);
+    setHasD1Divergences(false);
     setFormData({
       date: getLocalDateString(),
       svc: '',
@@ -125,9 +148,26 @@ const App: React.FC = () => {
     setView(View.FORM);
   };
 
+  const handleReset = () => {
+    setFormData({
+      date: getLocalDateString(),
+      svc: loggedSvc ? loggedSvc.id : '',
+      categories: INITIAL_CATEGORIES,
+      vehicleStatuses: [],
+      acceptanceType: 'D-1',
+      attachment: null,
+      lostDrivers: [],
+    });
+    setStep(Step.OFFER_CAPACITY);
+    setView(View.FORM);
+    setHasD1Divergences(true); // recheck on reset
+  };
+
   const getTitle = () => {
     if (view === View.ADMIN) return "Painel Administrativo";
     if (view === View.SUCCESS) return "Envio Concluído";
+    if (!loggedSvc) return "Login de Base";
+    if (hasD1Divergences) return "Correção de Pendências (D-1)";
     if (step === Step.OFFER_CAPACITY) return "Oferta e Capacidade";
     if (step === Step.CHECKLIST_ACCEPTANCE) return "Checklist e Aceite";
     return "Motoristas Perdidos";
@@ -156,6 +196,8 @@ const App: React.FC = () => {
         }}
         onAdminClick={() => setView(View.ADMIN)}
         title={getTitle()}
+        loggedSvc={loggedSvc}
+        onLogout={handleLogout}
       />
 
       {/* Main Content */}
@@ -164,7 +206,22 @@ const App: React.FC = () => {
           <AdminDashboard onBack={() => setView(View.FORM)} />
         )}
 
-        {view === View.FORM && step === Step.OFFER_CAPACITY && (
+        {view === View.FORM && !loggedSvc && (
+          <Login
+            svcOptions={svcOptions}
+            onLoginSuccess={setLoggedSvc}
+          />
+        )}
+
+        {view === View.FORM && loggedSvc && hasD1Divergences && (
+          <D1Divergences
+            date={formData.date}
+            svcId={loggedSvc.id}
+            onSuccess={() => setHasD1Divergences(false)}
+          />
+        )}
+
+        {view === View.FORM && loggedSvc && !hasD1Divergences && step === Step.OFFER_CAPACITY && (
           <Step1
             data={formData}
             updateData={updateFormData}
@@ -173,7 +230,7 @@ const App: React.FC = () => {
           />
         )}
 
-        {view === View.FORM && step === Step.CHECKLIST_ACCEPTANCE && (
+        {view === View.FORM && loggedSvc && !hasD1Divergences && step === Step.CHECKLIST_ACCEPTANCE && (
           <Step2
             data={formData}
             updateData={updateFormData}
@@ -183,7 +240,7 @@ const App: React.FC = () => {
           />
         )}
 
-        {view === View.FORM && step === Step.LOST_DRIVERS && (
+        {view === View.FORM && loggedSvc && !hasD1Divergences && step === Step.LOST_DRIVERS && (
           <Step3
             data={formData}
             updateData={updateFormData}
