@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FormData, LostDriver } from '../types';
 import { INITIAL_CATEGORIES } from '../constants';
+import { supabase } from '../services/supabaseClient';
 
 const PREDEFINED_REASONS = [
   'Abandono / No-Show',
@@ -36,6 +37,81 @@ const Step3: React.FC<Step3Props> = ({ data, updateData, onBack, onSubmit, isSav
   const [plate, setPlate] = useState('');
   const [reason, setReason] = useState('');
   const [fuelCard, setFuelCard] = useState<'Sim' | 'Não'>('Não');
+
+  // Autocomplete states
+  const [driverSuggestions, setDriverSuggestions] = useState<string[]>([]);
+  const [plateSuggestions, setPlateSuggestions] = useState<string[]>([]);
+  const [showDriverDropdown, setShowDriverDropdown] = useState(false);
+  const [showPlateDropdown, setShowPlateDropdown] = useState(false);
+
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      try {
+        const today = new Date();
+        const dateLimit = new Date();
+        dateLimit.setDate(today.getDate() - 15); // look back 15 days for a richer list
+        const dateLimitStr = dateLimit.toISOString().split('T')[0];
+
+        let query = supabase
+          .from('daily_routes')
+          .select('plate, driver_id')
+          .gte('date', dateLimitStr);
+
+        const activeSvc = data.svc;
+        if (activeSvc === 'SSP40') {
+          query = query.in('svc_id', ['SSP40', 'SSP49', 'SSP57']);
+        } else {
+          query = query.eq('svc_id', activeSvc);
+        }
+
+        const { data: routesData } = await query;
+        if (routesData) {
+          const uniqueDrivers = Array.from(new Set(routesData.map(r => r.driver_id).filter(d => d && d.trim().length > 2)));
+          const uniquePlates = Array.from(new Set(routesData.map(r => r.plate).filter(p => p && p.trim().length > 4)));
+          setDriverSuggestions(uniqueDrivers);
+          setPlateSuggestions(uniquePlates);
+        }
+      } catch (err) {
+        console.error("Erro ao buscar sugestões:", err);
+      }
+    };
+    
+    fetchSuggestions();
+  }, [data.svc]);
+
+  const filteredDrivers = name.trim().length >= 1
+    ? driverSuggestions.filter(d => d.toLowerCase().includes(name.toLowerCase())).slice(0, 5)
+    : [];
+
+  const filteredPlatesList = (() => {
+    const basePlates = data.vehicleStatuses
+      .filter(v => (v.fleetType || '').toUpperCase().trim() === fleetType.toUpperCase().trim())
+      .map(v => v.plate);
+
+    const allCandidates = fleetType === 'SPOT'
+      ? Array.from(new Set([...basePlates, ...plateSuggestions]))
+      : basePlates;
+
+    if (!plate.trim()) {
+      return allCandidates.slice(0, 8);
+    }
+    return allCandidates
+      .filter(p => p.toLowerCase().includes(plate.toLowerCase()))
+      .slice(0, 8);
+  })();
+
+  const handleSelectPlateSuggestion = (selectedPlate: string) => {
+    setPlate(selectedPlate);
+    setShowPlateDropdown(false);
+    
+    const v = data.vehicleStatuses.find(x => x.plate === selectedPlate);
+    if (v && v.modal) {
+      const norm = getNormalizedModal(v.modal);
+      if (norm) {
+        setModal(norm);
+      }
+    }
+  };
 
   // Filter plates of this SVC based on the selected fleet type
   const availablePlates = data.vehicleStatuses.filter(v => {
@@ -228,84 +304,106 @@ const Step3: React.FC<Step3Props> = ({ data, updateData, onBack, onSubmit, isSav
                   </select>
                 </div>
 
-                {/* 2. Placa Perdida (If Frota) OR Modal Selection (If Spot) */}
-                {(fleetType === 'FROTA FIXA' || fleetType === 'FROTA PRÓPRIA') ? (
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Placa Perdida</label>
-                    <select
-                      className="custom-select w-full h-11 px-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                      value={plate}
-                      onChange={(e) => handlePlateChange(e.target.value)}
-                    >
-                      <option value="">Selecione a placa...</option>
-                      {availablePlates.map(v => (
-                        <option key={v.plate} value={v.plate}>
-                          {v.plate}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Modal</label>
-                    <select
-                      className="custom-select w-full h-11 px-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                      value={modal}
-                      onChange={(e) => setModal(e.target.value)}
-                    >
-                      <option value="">Selecione o modal...</option>
-                      {INITIAL_CATEGORIES.map(cat => (
-                        <option key={cat.id} value={cat.name}>
-                          {cat.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                {/* 2. Modal Selection */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Modal</label>
+                  <select
+                    className="custom-select w-full h-11 px-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    value={modal}
+                    onChange={(e) => setModal(e.target.value)}
+                    disabled={fleetType !== 'SPOT'}
+                  >
+                    <option value="">Selecione o modal...</option>
+                    {INITIAL_CATEGORIES.map(cat => (
+                      <option key={cat.id} value={cat.name}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                {/* 3. Placa Input (If Spot) OR Modal Selection (If Frota) */}
-                {fleetType === 'SPOT' ? (
-                  <div className="col-span-2">
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Placa do Veículo (SPOT)</label>
-                    <input
-                      type="text"
-                      className="w-full h-11 px-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all dark:text-white uppercase"
-                      placeholder="Ex: ABC1D23 ou ABC1234"
-                      value={plate}
-                      onChange={(e) => {
-                        const cleaned = e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 7).toUpperCase();
-                        setPlate(cleaned);
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div className="col-span-2">
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Modal (Preenchido Automático)</label>
-                    <select
-                      className="custom-select w-full h-11 px-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                      value={modal}
-                      onChange={(e) => setModal(e.target.value)}
-                    >
-                      <option value="">Selecione o modal...</option>
-                      {INITIAL_CATEGORIES.map(cat => (
-                        <option key={cat.id} value={cat.name}>
-                          {cat.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                {/* 3. Placa Input (Searchable Autocomplete) */}
+                <div className="col-span-2 relative">
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Placa do Veículo</label>
+                  <input
+                    type="text"
+                    className="w-full h-11 px-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all dark:text-white uppercase font-mono tracking-wider"
+                    placeholder="Digite a placa (ex: ABC1D23)"
+                    value={plate}
+                    onChange={(e) => {
+                      const cleaned = e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 7).toUpperCase();
+                      setPlate(cleaned);
+                      setShowPlateDropdown(true);
+
+                      const selectedVehicle = data.vehicleStatuses.find(v => v.plate === cleaned);
+                      if (selectedVehicle && selectedVehicle.modal) {
+                        const norm = getNormalizedModal(selectedVehicle.modal);
+                        if (norm) {
+                          setModal(norm);
+                        }
+                      }
+                    }}
+                    onFocus={() => setShowPlateDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowPlateDropdown(false), 250)}
+                  />
+                  {showPlateDropdown && filteredPlatesList.length > 0 && (
+                    <ul className="absolute z-50 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg mt-1 max-h-40 overflow-y-auto shadow-lg">
+                      {filteredPlatesList.map(vPlate => {
+                        const v = data.vehicleStatuses.find(x => x.plate === vPlate);
+                        return (
+                          <li
+                            key={vPlate}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              handleSelectPlateSuggestion(vPlate);
+                            }}
+                            className="px-3 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 last:border-b-0 font-bold font-mono tracking-wider flex justify-between items-center"
+                          >
+                            <span>{vPlate}</span>
+                            {v && (
+                              <span className="text-[10px] bg-slate-100 dark:bg-slate-900 text-slate-500 font-sans font-bold px-1.5 py-0.5 rounded">
+                                {v.modal}
+                              </span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
 
                 {/* 4. Nome do Motorista */}
-                <div className="col-span-2">
+                <div className="col-span-2 relative">
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Nome Completo do Motorista</label>
                   <input
                     type="text"
                     className="w-full h-11 px-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all dark:text-white"
                     placeholder="Nome completo do motorista"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      setShowDriverDropdown(true);
+                    }}
+                    onFocus={() => setShowDriverDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowDriverDropdown(false), 250)}
                   />
+                  {showDriverDropdown && filteredDrivers.length > 0 && (
+                    <ul className="absolute z-50 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg mt-1 max-h-40 overflow-y-auto shadow-lg">
+                      {filteredDrivers.map(dName => (
+                        <li
+                          key={dName}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setName(dName);
+                            setShowDriverDropdown(false);
+                          }}
+                          className="px-3 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 last:border-b-0 font-medium"
+                        >
+                          {dName}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
 
                 {/* Cartão Combustível */}

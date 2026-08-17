@@ -1,7 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FormData, VehicleStatus } from '../types';
 import { JUSTIFICATION_OPTIONS } from '../constants';
+import { supabase } from '../services/supabaseClient';
 
 interface Step2Props {
   data: FormData;
@@ -13,6 +14,40 @@ interface Step2Props {
 
 const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSaving }) => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [pastPlates, setPastPlates] = useState<string[]>([]);
+  const [showReserveDropdown, setShowReserveDropdown] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchReserveSuggestions = async () => {
+      try {
+        const today = new Date();
+        const dateLimit = new Date();
+        dateLimit.setDate(today.getDate() - 15);
+        const dateLimitStr = dateLimit.toISOString().split('T')[0];
+
+        let query = supabase
+          .from('daily_routes')
+          .select('plate')
+          .gte('date', dateLimitStr);
+
+        const activeSvc = data.svc;
+        if (activeSvc === 'SSP40') {
+          query = query.in('svc_id', ['SSP40', 'SSP49', 'SSP57']);
+        } else {
+          query = query.eq('svc_id', activeSvc);
+        }
+
+        const { data: routesData } = await query;
+        if (routesData) {
+          const uniquePlates = Array.from(new Set(routesData.map(r => r.plate).filter(p => p && p.trim().length > 4)));
+          setPastPlates(uniquePlates);
+        }
+      } catch (err) {
+        console.error("Erro ao buscar sugestões de reserva:", err);
+      }
+    };
+    fetchReserveSuggestions();
+  }, [data.svc]);
 
   const handleSubmit = () => {
     const missingJustification = data.vehicleStatuses.find(v => !v.ranToday && !v.justification);
@@ -138,7 +173,7 @@ const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSav
                             </select>
 
                             {vehicle.justification === 'Carro reserva' && (
-                              <div className="mt-2 text-left">
+                              <div className="mt-2 text-left relative">
                                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                                   Placa do Carro Reserva <span className="text-red-500 font-bold">*</span>
                                 </label>
@@ -148,8 +183,42 @@ const Step2: React.FC<Step2Props> = ({ data, updateData, onBack, onSubmit, isSav
                                   placeholder="Informe a placa do reserva (ex: ABC1D23)"
                                   maxLength={8}
                                   value={vehicle.otherJustification || ''}
-                                  onChange={(e) => updateVehicle(vehicle.plate, { otherJustification: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
+                                  onChange={(e) => {
+                                    const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                                    updateVehicle(vehicle.plate, { otherJustification: val });
+                                    setShowReserveDropdown(vehicle.plate);
+                                  }}
+                                  onFocus={() => setShowReserveDropdown(vehicle.plate)}
+                                  onBlur={() => setTimeout(() => setShowReserveDropdown(null), 250)}
                                 />
+                                {showReserveDropdown === vehicle.plate && (
+                                  (() => {
+                                    const typed = (vehicle.otherJustification || '').toUpperCase();
+                                    const suggestions = pastPlates
+                                      .filter(p => p !== vehicle.plate && (!typed || p.includes(typed)))
+                                      .slice(0, 5);
+
+                                    if (suggestions.length === 0) return null;
+
+                                    return (
+                                      <ul className="absolute z-50 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg mt-1 max-h-36 overflow-y-auto shadow-lg">
+                                        {suggestions.map(sPlate => (
+                                          <li
+                                            key={sPlate}
+                                            onMouseDown={(e) => {
+                                              e.preventDefault();
+                                              updateVehicle(vehicle.plate, { otherJustification: sPlate });
+                                              setShowReserveDropdown(null);
+                                            }}
+                                            className="px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 last:border-b-0 font-mono font-bold tracking-wider"
+                                          >
+                                            {sPlate}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    );
+                                  })()
+                                )}
                                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                                   Esta placa será checada no sistema para validar a rota realizada no lugar do veículo {vehicle.plate}.
                                 </p>
