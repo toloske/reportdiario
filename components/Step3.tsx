@@ -195,7 +195,7 @@ const Step3: React.FC<Step3Props> = ({ data, updateData, onBack, onSubmit, isSav
     for (const c of data.categories) {
       const offer = c.offer || 0;
       const capacity = c.capacity || 0;
-      const expectedPerdas = offer - capacity;
+      const expectedPerdas = Math.max(0, offer - capacity);
       
       const actualPerdas = (data.lostDrivers || []).filter(d => 
         (d.fleetType === 'SPOT' || d.fleetType === 'FROTA PRÓPRIA') && 

@@ -14,15 +14,6 @@ const Step1: React.FC<Step1Props> = ({ data, updateData, onNext, svcOptions }) =
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const handleNext = () => {
-    // Validate that capacity <= offer for all categories
-    for (const c of data.categories) {
-      const offer = c.offer || 0;
-      const capacity = c.capacity || 0;
-      if (capacity > offer) {
-        alert(`Atenção: A capacidade do modal ${c.name} (${capacity}) não pode ser maior que a oferta (${offer}).`);
-        return;
-      }
-    }
 
     // Check if there are any non-zero/non-null offers or capacities entered
     const hasSpotOffers = data.categories.some(c => 
