@@ -5045,8 +5045,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
                   {/* SEÇÃO DE ERROS DE PREENCHIMENTO E SEM DRIVER - WHATSAPP */}
                   {(() => {
+                    const excludedSvcIds = ['SSP49', 'SSP57', 'SSP18', 'FIRST MILE', 'JUNDIAÍ', 'OSASCO', 'SSP20', 'SSP37', 'SSP30'];
                     const visibleErrors = finalDisplayedDetails.filter(d =>
-                      d.svc !== 'XPT' && (
+                      d.svc !== 'XPT' && !excludedSvcIds.includes(d.svc) && (
                         (!d.didRun && d.reason && d.reason.toUpperCase().includes('RODOU')) ||
                         (!d.didRun && d.reason === 'Sem justificativa preenchida')
                       )
@@ -5063,6 +5064,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     const svcKeys = Object.keys(errorsBySvc).sort();
 
                     const visibleSemDriver = finalDisplayedDetails.filter(d =>
+                      !excludedSvcIds.includes(d.svc) &&
                       d.reason && d.reason.toLowerCase().includes('sem driver')
                     );
 
