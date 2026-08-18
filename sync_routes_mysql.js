@@ -337,6 +337,7 @@ async function checkAndAlertFillingErrors(targetDate) {
 
   const activeMlVehicles = (mlVehicles || []).filter(v => isVehicleActiveOnDate(v.plate, targetDate));
 
+  const excludedSvcIds = ['SSP49', 'SSP57', 'SSP18', 'FIRST MILE', 'JUNDIAÍ', 'OSASCO', 'SSP20', 'SSP37', 'SSP30'];
   const expectedSvcIds = Array.from(
     new Set(
       activeMlVehicles.map(v => {
@@ -344,7 +345,7 @@ async function checkAndAlertFillingErrors(targetDate) {
         return v.svc_id;
       })
     )
-  ).filter(id => id && id !== 'FIRST MILE');
+  ).filter(id => id && !excludedSvcIds.includes(id));
   console.log(`[Alerta WhatsApp] Esperando relatórios de ${expectedSvcIds.length} SVCs: [${expectedSvcIds.join(', ')}]`);
 
   // 2. Fetch submitted reports for targetDate
@@ -571,7 +572,7 @@ async function checkAndAlertFillingErrors(targetDate) {
 
     // Regionals mapping
     const MAPEAMENTO_REGIONAIS = {
-      "Regional 1": ["SSP20", "SSP27", "SSP36", "XPT", "SSP3", "SSP37", "SSP38", "SSP9", "SSP29"],
+      "Regional 1": ["SSP27", "SSP36", "XPT", "SSP3", "SSP38", "SSP9", "SSP29"],
       "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP7", "SSP8", "SSP18", "SSP25"],
       "Regional 3": ["SSP10", "SSP12", "SSP22", "SSP26", "SSP28", "SSP31", "SSP4"]
     };
@@ -702,7 +703,7 @@ async function checkAndAlertFillingErrors(targetDate) {
 
       // Regionals mapping
       const MAPEAMENTO_REGIONAIS = {
-        "Regional 1": ["SSP20", "SSP27", "SSP36", "XPT", "SSP3", "SSP37", "SSP38", "SSP9", "SSP29"],
+        "Regional 1": ["SSP27", "SSP36", "XPT", "SSP3", "SSP38", "SSP9", "SSP29"],
         "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP7", "SSP8", "SSP18", "SSP25"],
         "Regional 3": ["SSP10", "SSP12", "SSP22", "SSP26", "SSP28", "SSP31", "SSP4"]
       };
@@ -868,7 +869,7 @@ async function checkAndSendCorteSummary(targetDate, forceSend = false) {
   const groupRecipient = process.env.VITE_WHATSAPP_GROUP_RECIPIENT || '120363284501155529@g.us';
 
   const MAPEAMENTO_REGIONAIS = {
-    "Regional 1": ["SSP20", "SSP27", "SSP36", "XPT", "SSP3", "SSP37", "SSP38", "SSP9", "SSP29"],
+    "Regional 1": ["SSP27", "SSP36", "XPT", "SSP3", "SSP38", "SSP9", "SSP29"],
     "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP7", "SSP8", "SSP18", "SSP25"],
     "Regional 3": ["SSP10", "SSP12", "SSP22", "SSP26", "SSP28", "SSP31", "SSP4"]
   };

@@ -10,7 +10,7 @@ const INSTANCE = process.env.VITE_EVOLUTION_INSTANCE;
 const TARGET_GROUP = '120363284501155529@g.us';
 
 const MAPEAMENTO_REGIONAIS = {
-  "Regional 1": ["SSP20", "SSP27", "SSP36", "XPT", "SSP3", "SSP37", "SSP38", "SSP9", "SSP29"],
+  "Regional 1": ["SSP27", "SSP36", "XPT", "SSP3", "SSP38", "SSP9", "SSP29"],
   "Regional 2": ["SSP34", "FIRST MILE", "SSP23", "SSP30", "SSP39", "SSP40", "SSP49", "SSP57", "SSP7", "SSP8", "SSP18", "SSP25"],
   "Regional 3": ["SSP10", "SSP12", "SSP22", "SSP26", "SSP28", "SSP31", "SSP4"]
 };
