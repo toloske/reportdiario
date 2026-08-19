@@ -72,6 +72,8 @@ function isVehicleActiveOnDate(plate, dateStr) {
 
 async function run() {
   console.log("=== INICIANDO SINCRONIZAÇÃO DE ROTAS (MYSQL -> SUPABASE) ===");
+  console.log("Variáveis de ambiente disponíveis no Railway:", Object.keys(process.env));
+
 
   // Parse command line arguments
   // Usage examples:
