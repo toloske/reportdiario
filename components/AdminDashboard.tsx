@@ -898,14 +898,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
                 platesForDate.forEach(plate => {
                     const isFixed = validFixedPlatesSet.has(plate) && isVehicleActiveOnDate(plate, date);
-                    const fleetType = isFixed ? 'Frota Fixa' : 'Próprio';
+                    if (!isFixed) return; // Ignore spot vehicles completely!
                     
-                    let svc = '';
-                    if (isFixed) {
-                        svc = validFixedVehicles.find(v => v.plate === plate)?.svc_id || '';
-                    } else {
-                        svc = reportCache[`${date}|${plate}`]?.svc_id || routeSvcByDateAndPlate[`${date}|${plate}`] || '';
-                    }
+                    const fleetType = 'Frota Fixa';
+                    const svc = validFixedVehicles.find(v => v.plate === plate)?.svc_id || '';
                     
                     if (!svc || !validSvcIds.includes(svc)) return;
 
@@ -5344,14 +5340,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                         <button onClick={() => setDetStatusFilter('idle')} className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${detStatusFilter === 'idle' ? 'bg-rose-500 text-white shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Parado (0)</button>
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Tipo de Frota</label>
-                      <div className="flex gap-2">
-                        <button onClick={() => setDetFleetTypeFilter('all')} className={`flex-1 py-1.5 sm:py-2.5 text-[10px] sm:text-xs font-bold rounded-xl transition-all ${detFleetTypeFilter === 'all' ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Todas</button>
-                        <button onClick={() => setDetFleetTypeFilter('fixed')} className={`flex-1 py-1.5 sm:py-2.5 text-[10px] sm:text-xs font-bold rounded-xl transition-all ${detFleetTypeFilter === 'fixed' ? 'bg-blue-500 text-white shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Fixa</button>
-                        <button onClick={() => setDetFleetTypeFilter('spot')} className={`flex-1 py-1.5 sm:py-2.5 text-[10px] sm:text-xs font-bold rounded-xl transition-all ${detFleetTypeFilter === 'spot' ? 'bg-indigo-500 text-white shadow-md transform scale-[1.02]' : 'bg-white text-slate-600 border border-slate-200 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Próprio</button>
-                      </div>
-                    </div>
+
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide dark:text-slate-400">Filtro de Anomalias</label>
                       <div className="flex gap-2">
