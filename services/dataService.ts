@@ -94,7 +94,6 @@ export const dataService = {
         const { data, error } = await supabase
             .from('vehicles')
             .select('*')
-            .or('fleet_type.eq.FROTA FIXA,svc_id.eq.XPT')
             .eq('active', true);
 
         if (error) {

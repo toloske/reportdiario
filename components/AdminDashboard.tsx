@@ -900,8 +900,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     const isFixed = validFixedPlatesSet.has(plate) && isVehicleActiveOnDate(plate, date);
                     if (!isFixed) return; // Ignore spot vehicles completely!
                     
-                    const fleetType = 'Frota Fixa';
-                    const svc = validFixedVehicles.find(v => v.plate === plate)?.svc_id || '';
+                    const vehicleInfo = validFixedVehicles.find(v => v.plate === plate);
+                    const fleetType = vehicleInfo?.fleet_type || 'Frota Fixa';
+                    const svc = vehicleInfo?.svc_id || '';
                     
                     if (!svc || !validSvcIds.includes(svc)) return;
 
@@ -2031,8 +2032,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
     platesForDate.forEach(plate => {
         const isFixed = validFixedPlatesSet.has(plate);
-        const fleetType = isFixed ? 'Frota Fixa' : 'Próprio';
-        let svc = isFixed ? (validFixedVehicles.find(v => v.plate === plate)?.svc_id || '') : (reportCache[`${dateStr}|${plate}`]?.svc_id || routeSvcByDateAndPlate[`${dateStr}|${plate}`] || '');
+        if (!isFixed) return; // Ignore spot vehicles completely!
+        
+        const vehicleInfo = validFixedVehicles.find(v => v.plate === plate);
+        const fleetType = vehicleInfo?.fleet_type || 'Frota Fixa';
+        const svc = vehicleInfo?.svc_id || '';
         if (!svc || !validSvcIds.includes(svc)) return;
 
         const didRun = routesByDateAndPlate[`${dateStr}|${plate}`] || false;
