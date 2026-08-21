@@ -5374,9 +5374,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                           <th className="px-5 py-4 text-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('didRun')}>
                             <div className="flex items-center justify-center gap-1">Status (Carregou) {detSortConfig?.key === 'didRun' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
                           </th>
-                          <th className="px-5 py-4 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition">
-                            <div className="flex items-center gap-1">Justificativa Anterior (D-1)</div>
-                          </th>
                           <th className="px-5 py-4 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('reason')}>
                             <div className="flex items-center gap-1">Justificativa do Dia {detSortConfig?.key === 'reason' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
                           </th>
@@ -5422,11 +5419,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                             <span className="material-symbols-outlined text-[14px]">cancel</span> Não (0)
                                         </span>
                                      )}
-                                 </td>
-                                 <td className="px-5 py-3.5">
-                                    <span className={`text-xs font-semibold ${item.previousJustification === 'RODOU' || item.previousJustification?.startsWith('RODOU') ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-500'}`}>
-                                       {item.previousJustification || 'Sem registro'}
-                                    </span>
                                  </td>
                                  <td className="px-5 py-3.5">
                                     {editingPlateKey === `${item.date}|${item.plate}` ? (
