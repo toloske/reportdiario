@@ -5357,28 +5357,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
                  <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-xl max-h-[400px] overflow-y-auto custom-scrollbar">
                    <table className="w-full text-sm text-left relative">
-                     <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0 z-10 shadow-sm select-none">
-                       <tr>
-                         <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('date')}>
-                            <div className="flex items-center gap-1">Data {detSortConfig?.key === 'date' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
-                          </th>
-                          <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('svc')}>
-                            <div className="flex items-center gap-1">SVC {detSortConfig?.key === 'svc' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
-                          </th>
-                          <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('plate')}>
-                            <div className="flex items-center gap-1">Placa {detSortConfig?.key === 'plate' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
-                          </th>
-                          <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('fleetType')}>
-                            <div className="flex items-center gap-1">Frota {detSortConfig?.key === 'fleetType' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
-                          </th>
-                          <th className="px-5 py-4 w-1/6 text-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('didRun')}>
+                      <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs uppercase font-bold tracking-wider sticky top-0 z-10 shadow-sm select-none">
+                        <tr>
+                          <th className="px-5 py-4 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('date')}>
+                             <div className="flex items-center gap-1">Data {detSortConfig?.key === 'date' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                           </th>
+                          <th className="px-5 py-4 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('svc')}>
+                             <div className="flex items-center gap-1">SVC {detSortConfig?.key === 'svc' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                           </th>
+                          <th className="px-5 py-4 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('plate')}>
+                             <div className="flex items-center gap-1">Placa {detSortConfig?.key === 'plate' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                           </th>
+                          <th className="px-5 py-4 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('fleetType')}>
+                             <div className="flex items-center gap-1">Frota {detSortConfig?.key === 'fleetType' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                           </th>
+                          <th className="px-5 py-4 text-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('didRun')}>
                             <div className="flex items-center justify-center gap-1">Status (Carregou) {detSortConfig?.key === 'didRun' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
                           </th>
-                          <th className="px-5 py-4 w-1/6 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('reason')}>
-                            <div className="flex items-center gap-1">Justificativa Reportada {detSortConfig?.key === 'reason' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
+                          <th className="px-5 py-4 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+                            <div className="flex items-center gap-1">Justificativa Anterior (D-1)</div>
+                          </th>
+                          <th className="px-5 py-4 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" onClick={() => handleDetSort('reason')}>
+                            <div className="flex items-center gap-1">Justificativa do Dia {detSortConfig?.key === 'reason' && <span className="material-symbols-outlined text-[14px]">{detSortConfig.direction === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}</div>
                           </th>
                        </tr>
-                     </thead>
+                      </thead>
                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                         {finalDisplayedDetails.length === 0 ? (
                            <tr>
