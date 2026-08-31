@@ -5045,7 +5045,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
                   {/* SEÇÃO DE ERROS DE PREENCHIMENTO E SEM DRIVER - WHATSAPP */}
                   {(() => {
-                    const excludedSvcIds = ['SSP49', 'SSP57', 'SSP18', 'FIRST MILE', 'JUNDIAÍ', 'OSASCO', 'SSP20', 'SSP37', 'SSP30', 'SSP34', 'SSP31', 'SSP3'];
+                    const excludedSvcIds = ['SSP49', 'SSP57', 'SSP18', 'FIRST MILE', 'JUNDIAÍ', 'OSASCO', 'SSP20', 'SSP37', 'SSP30', 'SSP34', 'SSP31', 'SSP3', 'SSP12', 'SSP22', 'SSP26', 'SSP28', 'SSP8'];
                     const visibleErrors = finalDisplayedDetails.filter(d =>
                       d.svc !== 'XPT' && !excludedSvcIds.includes(d.svc) && (
                         (!d.didRun && d.reason && d.reason.toUpperCase().includes('RODOU')) ||
