@@ -338,7 +338,7 @@ async function checkAndAlertFillingErrors(targetDate) {
 
   const activeMlVehicles = (mlVehicles || []).filter(v => isVehicleActiveOnDate(v.plate, targetDate));
 
-  const excludedSvcIds = ['SSP49', 'SSP57', 'SSP18', 'FIRST MILE', 'JUNDIAÍ', 'OSASCO', 'SSP20', 'SSP37', 'SSP30', 'SSP34', 'SSP31', 'SSP3', 'SSP12', 'SSP22', 'SSP26', 'SSP28', 'SSP8'];
+  const excludedSvcIds = ['SSP49', 'SSP57', 'SSP18', 'FIRST MILE', 'JUNDIAÍ', 'OSASCO', 'SSP20', 'SSP37', 'SSP30', 'SSP34', 'SSP31', 'SSP3', 'SSP12', 'SSP22', 'SSP26', 'SSP28', 'SSP8', 'SSP25', 'SSP29', 'SSP36'];
   const expectedSvcIds = Array.from(
     new Set(
       activeMlVehicles.map(v => {
